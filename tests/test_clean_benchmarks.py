@@ -106,6 +106,32 @@ class CleanBenchmarkTests(unittest.TestCase):
         self.assertFalse(result["nll_available"])
         self.assertEqual(result["nll_unavailable_reason"], "empty_reference")
 
+    def test_final_clean_matrix_stays_on_the_paper_models_when_the_registry_grows(self):
+        expected = set(B.M.PAPER_MODELS) | set(B.VLM_TYPES)
+        self.assertLess(set(B.M.PAPER_MODELS), set(B.M.MODEL_SPECS))
+        audit = {"models": {key: {"path": f"/checkpoints/{key}"} for key in expected},
+                 "datasets": {"wikitext-2-raw": {"files": ["/data/wikitext-test.arrow"]},
+                              "ok-vqa": {"files": ["/data/ok-vqa-val2014-0.arrow"]},
+                              "text-vqa": {"files": ["/data/textvqa-validation-0.arrow"]}}}
+
+        def read_json(path):
+            path = Path(path)
+            if path.name == "audit.json":
+                return audit
+            return {"model_type": B.VLM_TYPES[path.parent.name]}
+
+        with mock.patch.object(B.M, "read_json", side_effect=read_json), \
+                mock.patch.object(B.M, "checkpoint_manifest",
+                                  side_effect=lambda path, key: {"model_key": key}), \
+                mock.patch.object(B.M, "checkpoint_files", return_value=[]), \
+                mock.patch.object(B.M, "file_record",
+                                  side_effect=lambda path, *root: {"path": str(path)}), \
+                mock.patch.object(B, "freeze_plan") as freeze:
+            B.prepare(SimpleNamespace(cache_audit="/audit/audit.json", output="unused"))
+        _, models, _, conditions = freeze.call_args.args
+        self.assertEqual(set(models), expected)
+        self.assertEqual({row["model"] for row in conditions}, expected)
+
     def test_retry_preserves_parent_and_excludes_completed_conditions(self):
         with tempfile.TemporaryDirectory() as directory:
             parent = Path(directory)

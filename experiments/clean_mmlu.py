@@ -82,7 +82,24 @@ MODEL_SPECS = {
         "hidden_size": 3584, "intermediate_size": 18944, "num_hidden_layers": 28,
         "num_attention_heads": 28, "num_key_value_heads": 4, "vocab_size": 152064,
     },
+    "llama3.2-1b": {
+        "cache_component": "models--meta-llama--Llama-3.2-1B",
+        "repository": "meta-llama/Llama-3.2-1B",
+        "architecture": ["LlamaForCausalLM"], "model_type": "llama",
+        "hidden_size": 2048, "intermediate_size": 8192, "num_hidden_layers": 16,
+        "num_attention_heads": 32, "num_key_value_heads": 8, "vocab_size": 128256,
+    },
+    "qwen2.5-1.5b": {
+        "cache_component": "models--Qwen--Qwen2.5-1.5B",
+        "repository": "Qwen/Qwen2.5-1.5B",
+        "architecture": ["Qwen2ForCausalLM"], "model_type": "qwen2",
+        "hidden_size": 1536, "intermediate_size": 8960, "num_hidden_layers": 28,
+        "num_attention_heads": 12, "num_key_value_heads": 2, "vocab_size": 151936,
+    },
 }
+# The clean paper matrix and its summary are defined on these three checkpoints.  The
+# other registered checkpoints are available to the RegionAlign development matrix only.
+PAPER_MODELS = ("llama2-7b", "llama3.1-8b", "qwen2.5-7b")
 SOURCE_RELATIVE = (
     Path("regionalign/__init__.py"),
     Path("regionalign/experiments/__init__.py"),
@@ -590,8 +607,8 @@ def create_plan(args):
     models = dict(args.model)
     if len(models) != len(args.model):
         raise ValueError("duplicate model key")
-    if set(models) != set(MODEL_SPECS):
-        raise ValueError(f"the frozen paper matrix requires model keys {sorted(MODEL_SPECS)}")
+    if set(models) != set(PAPER_MODELS):
+        raise ValueError(f"the frozen paper matrix requires model keys {sorted(PAPER_MODELS)}")
     if len({str(path) for path in models.values()}) != len(models):
         raise ValueError("the three model keys must refer to distinct checkpoints")
     if set(args.formats) != set(FORMATS) or len(args.formats) != len(FORMATS):

@@ -373,8 +373,17 @@ class MMLUCleanTests(unittest.TestCase):
                 M.run_condition(args)
         execute.assert_not_called()
 
+    def test_paper_matrix_is_the_three_base_models_not_the_whole_registry(self):
+        self.assertEqual(M.PAPER_MODELS, ("llama2-7b", "llama3.1-8b", "qwen2.5-7b"))
+        self.assertLess(set(M.PAPER_MODELS), set(M.MODEL_SPECS))
+        small = [(key, Path(f"/checkpoints/{key}")) for key in ("llama3.2-1b", "qwen2.5-1.5b")]
+        with mock.patch.object(M.C, "fresh_output_dir") as allocate:
+            with self.assertRaisesRegex(ValueError, "frozen paper matrix"):
+                M.create_plan(SimpleNamespace(model=small, formats=list(M.FORMATS), out=None))
+        allocate.assert_not_called()
+
     def test_summary_preflight_precedes_test_access(self):
-        models = {key: {} for key in M.MODEL_SPECS}
+        models = {key: {} for key in M.PAPER_MODELS}
         conditions = [{"model": key, "format": fmt} for key in models for fmt in M.FORMATS]
         plan = {"models": models, "formats": list(M.FORMATS), "conditions": conditions,
                 "dataset": {"hf_home": "/unused"}}
@@ -388,7 +397,7 @@ class MMLUCleanTests(unittest.TestCase):
         read_test.assert_not_called()
 
     def test_summary_logs_before_test_hash_or_parse(self):
-        models = {key: {} for key in M.MODEL_SPECS}
+        models = {key: {} for key in M.PAPER_MODELS}
         conditions = [{"model": key, "format": fmt} for key in models for fmt in M.FORMATS]
         plan = {"models": models, "formats": list(M.FORMATS), "conditions": conditions,
                 "dataset": {"hf_home": "/unused"}}

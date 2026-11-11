@@ -82,7 +82,7 @@ def source_records():
 def prepare(args):
     audit = M.read_json(args.cache_audit)
     models = {}
-    for key in sorted(set(M.MODEL_SPECS) | set(VLM_TYPES)):
+    for key in sorted(set(M.PAPER_MODELS) | set(VLM_TYPES)):     # the frozen final matrix
         path = Path(audit["models"][key]["path"])
         if key in M.MODEL_SPECS:
             models[key] = M.checkpoint_manifest(path, key)
@@ -483,7 +483,7 @@ def main(argv=None):
     for name, function in [("preflight", preflight), ("run", run_condition)]:
         cmd = sub.add_parser(name)
         cmd.add_argument("--run", required=True)
-        cmd.add_argument("--model", required=True, choices=sorted(set(M.MODEL_SPECS) | set(VLM_TYPES)))
+        cmd.add_argument("--model", required=True, choices=sorted(set(M.PAPER_MODELS) | set(VLM_TYPES)))
         cmd.add_argument("--format", required=True, choices=("int8", "int4"))
         cmd.add_argument("--device", default="cuda:0")
         if name == "run":

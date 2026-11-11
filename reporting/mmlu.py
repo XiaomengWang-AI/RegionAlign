@@ -180,11 +180,11 @@ def _condition(run, plan, model, fmt, test_rows):
 
 def summarize_run(run):
     run, plan = M.load_plan(run)
-    if set(plan.get("models", {})) != set(M.MODEL_SPECS):
+    if set(plan.get("models", {})) != set(M.PAPER_MODELS):
         raise ValueError("paper summary requires the three frozen base models")
     if sorted(plan.get("formats", [])) != ["int4", "int8"] or len(plan["formats"]) != 2:
         raise ValueError("paper summary requires exactly INT8 and INT4")
-    expected_conditions = {(model, fmt) for model in M.MODEL_SPECS for fmt in M.FORMATS}
+    expected_conditions = {(model, fmt) for model in M.PAPER_MODELS for fmt in M.FORMATS}
     planned_conditions = {(row.get("model"), row.get("format")) for row in plan.get("conditions", [])}
     if planned_conditions != expected_conditions or len(plan["conditions"]) != 6:
         raise ValueError("plan does not contain the exact six-condition matrix")

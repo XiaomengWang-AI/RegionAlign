@@ -22,6 +22,34 @@ class RegionRegistrationTests(unittest.TestCase):
             allowed = S.depth_ranges(self.DIMS["layers"])[band]
             self.assertTrue(all(region["layer"] in allowed for region in band_regions))
 
+    def test_a_formal_plan_may_name_any_registered_subset(self):
+        models = S._parse_models(["qwen2.5-1.5b=/checkpoints/b", "llama3.2-1b=/checkpoints/a"])
+        self.assertEqual(set(models), {"llama3.2-1b", "qwen2.5-1.5b"})
+        self.assertEqual(set(S._parse_models(["llama2-7b=/checkpoints/c"])), {"llama2-7b"})
+        for entries in ([], ["unknown=/x"], ["llama3.2-1b"],
+                        ["llama3.2-1b=/x", "llama3.2-1b=/y"]):
+            with self.subTest(entries=entries), self.assertRaises(ValueError):
+                S._parse_models(entries)
+        with tempfile.TemporaryDirectory() as temporary:
+            for models in ({}, {"unregistered": Path(temporary)}):
+                with self.subTest(models=models), self.assertRaisesRegex(ValueError, "registered"):
+                    S.make_plan(Path(temporary) / "run", models, temporary, "train", "validation")
+
+    def test_registered_small_models_have_legal_regions_in_every_band_and_kind(self):
+        for key in ("llama3.2-1b", "qwen2.5-1.5b"):
+            spec = S.M.MODEL_SPECS[key]
+            for fmt, bits in (("int8", 8), ("int4", 4)):
+                with self.subTest(model=key, format=fmt):
+                    dims = S.dims_for_format(dict(spec), fmt)
+                    self.assertEqual(dims["head_dim"] * dims["heads"], dims["hidden"])
+                    regions = S.preregistered_regions(key, dims, bits)
+                    self.assertEqual(len(regions), 12)
+                    self.assertEqual({(r["depth_band"], r["kind"]) for r in regions},
+                                     {(band, kind) for band in S.DEPTH_BANDS
+                                      for kind in S.REGION_KINDS})
+                    for region in regions:
+                        self.assertTrue(S.R.reachable_rows(region, dims))
+
     def test_format_changes_capacity_without_changing_registered_design(self):
         int8 = S.preregistered_regions("llama3.1-8b", self.DIMS, 8)
         int4 = S.preregistered_regions("llama3.1-8b", self.DIMS, 4)

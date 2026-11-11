@@ -1,8 +1,9 @@
 """Audited development-only LLM RegionAlign matrix.
 
 This is the formal, parallel successor to the one-region language smoke driver.
-It freezes the complete Llama-2/Llama-3.1/Qwen2.5 x INT8/INT4 x
-MMLU/WikiText development matrix before execution.  Search and evaluation are
+It freezes, for the registered checkpoints named on the command line, the
+complete INT8/INT4 x MMLU/WikiText development matrix before execution.  A plan
+may name any non-empty subset of the registry.  Search and evaluation are
 separate commands and therefore separate model processes.  There is deliberately
 no final/test command or input path in this module.
 
@@ -366,8 +367,8 @@ def _parse_models(entries):
             raise ValueError(f"invalid or duplicate model key {name!r}")
         path = Path(raw).expanduser().resolve()
         models[name] = path
-    if set(models) != set(MODELS):
-        raise ValueError(f"formal plan requires exactly {sorted(MODELS)}")
+    if not models:
+        raise ValueError(f"a formal plan names at least one of {sorted(MODELS)}")
     return models
 
 
@@ -448,8 +449,9 @@ def make_plan(run, models, hf_home, wikitext_train, wikitext_validation,
     if run.exists() and any(run.iterdir()):
         raise FileExistsError(f"run directory is not empty: {run}")
     run.mkdir(parents=True, exist_ok=True)
-    if set(models) != set(MODELS) or tuple(formats) != FORMATS or tuple(tasks) != TASKS:
-        raise ValueError("the formal plan requires all registered models, formats and tasks")
+    if (not models or not set(models) <= set(MODELS)
+            or tuple(formats) != FORMATS or tuple(tasks) != TASKS):
+        raise ValueError("the formal plan requires registered models and all formats and tasks")
     execution = _execution_protocol(search_batch_size, eval_batch_size,
                                     grad_batch_size, min_free_gpu_gib)
     sources = _copy_sources(run)
@@ -457,7 +459,9 @@ def make_plan(run, models, hf_home, wikitext_train, wikitext_validation,
     panels, datasets = _freeze_panels(run, models, hf_home,
                                        wikitext_train, wikitext_validation)
     conditions = []
-    for model_key in MODELS:
+    for model_key in MODELS:                    # registry order, whatever order was given
+        if model_key not in models:
+            continue
         config = M.read_json(Path(models[model_key]) / "config.json")
         for fmt in FORMATS:
             dims = dims_for_format(config, fmt)
@@ -1064,7 +1068,7 @@ def parser():
     commands = root.add_subparsers(dest="command", required=True)
     plan = commands.add_parser("plan")
     plan.add_argument("--model", action="append", required=True,
-                      help="repeat exactly three times: model-key=/checkpoint")
+                      help="repeat once per registered model to include: model-key=/checkpoint")
     plan.add_argument("--hf-home", default=str(C.HUB))
     plan.add_argument("--wikitext-train", required=True)
     plan.add_argument("--wikitext-validation", required=True)
