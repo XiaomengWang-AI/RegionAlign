@@ -1,19 +1,24 @@
 # RegionAlign
 
 本目录维护预定区域下的布局对准研究：同一模型、任务、4 KiB 区域、翻位预算和搜索预算下，比较 `local`、`noperm` 与 `random`。
+攻击者只先拿到区域：区域内任意存储位都可翻、方向不限，没有可翻单元图。
 合法重排必须先通过 clean gate；故障损伤相对于同一重排布局的无故障模型计算。
 
 ## 目录与文件用途
 
 | 文件或目录 | 用途 |
 |---|---|
-| `config.py` | 复用仓库模型/缓存配置；管理本目录的结果路径和只新增输出 |
-| `harness/core.py` | 共享权重量化、置换、故障校验与基础 Runtime 的入口；实现仍由原仓库共享内核提供 |
+| `AGENTS.md`、`CLAUDE.md` | 操作契约：研究假设、可改范围、自检与交叉审查 |
+| `config.py` | 本包自有的路径、离线环境设置和只新增的结果路径 |
+| `runtime.json` | 本机配置：`hf_home` 指向模型与数据缓存 |
+| `requirements.txt` | 本包直接依赖及实验所用版本 |
+| `harness/core.py` | 自包含内核：权重量化、合法置换、翻位与 in-range 校验、基础 Runtime |
 | `harness/region.py` | 通用区域几何、合法布局、区域校验与计算预算上下文 |
 | `harness/evidence.py` | JSON 数值清理等证据辅助函数 |
 | `algorithm/search.py` | 正式区域实验共用的搜索算法 |
 | `runtimes/text.py` | MMLU/WikiText 冻结 token 面板及正式文本目标 |
 | `runtimes/vqa.py` | LLaVA/Qwen2-VL 的训练集面板、多模态计算及评分适配 |
+| `runtimes/vqa_score.py` | 官方 VQA 答案归一化与一致性准确率 |
 | `experiments/llm.py` | Llama-2、Llama-3.1、Qwen2.5 的正式开发集匹配矩阵 |
 | `experiments/vqa.py` | LLaVA/Qwen2-VL 的正式开发集匹配矩阵及 GPU preflight |
 | `experiments/official_okvqa.py` | 官方训练来源的独立归档、面板选择审计与四条件 parent |
@@ -37,7 +42,9 @@
 | `reporting/mmlu.py` | 完整 clean MMLU 结果的表格、图与校验 |
 | `reporting/clean_matrix.py` | 已有 clean 矩阵汇总；不代替正式 RegionAlign 的状态检查 |
 | `reporting/campaign_costs.py` | 冻结注册矩阵的搜索成本、开发损伤、匹配对照与覆盖汇总 |
-| `tests/test_region_core.py` | 通用区域、合法置换与算法接口测试 |
+| `tests/helpers.py` | 测试共用的小型随机模型与 Runtime 夹具 |
+| `tests/test_core.py` | 内核测试：翻位可逆、置换保函数与保码、量化完整、in-range 规则 |
+| `tests/test_region_core.py` | 通用区域、合法置换、算法接口与包自包含性测试 |
 | `tests/test_llm_region_study.py` | 正式文本矩阵、匹配重复、隔离与源码快照测试 |
 | `tests/test_vqa_region_study.py` | 正式 VQA 矩阵、输入身份与评价规则测试 |
 | `tests/test_official_okvqa.py` | 官方训练选择等价、来源绑定、图片失败不替换与新 parent 测试 |
@@ -58,10 +65,12 @@
 | `tests/test_campaign_followups.py` | 真实小型量化运行时的跨任务独立评价测试 |
 | `tests/test_campaign_costs.py` | 搜索成本核算、缺失覆盖与匹配对照隔离测试 |
 | `tests/test_wikitext_clean_dev.py` | 开发集文本隔离与 token 加权测试 |
-| `tests/test_config.py` | 输出边界、配置代理及拒绝覆盖测试 |
-| `results/` | 迁入的非 pilot 结果、运行计划、日志与迁移审计 |
+| `tests/test_config.py` | 输出边界、离线环境及拒绝覆盖测试 |
+| `results/` | 分离前产生的结果、运行计划、日志与迁移审计；只新增，不进版本库 |
+| `.claude/review-loop/` | Codex 只读交叉审查脚本 |
 
-包初始化不启动实验；测试包固定本仓库的共享测试入口。依赖与环境安装沿用仓库根的 `requirements.txt`、`config/runtime.json`。
+包初始化不启动实验。本包自包含：不导入包外代码，唯一的外部输入是 `runtime.json` 里 `hf_home` 指向的缓存。
+命令在包的上一级目录以 `python -m regionalign...` 运行；依赖见 `requirements.txt`。
 
 ## 数据与结果导航
 
@@ -82,26 +91,22 @@
 
 ## 保留边界与历史版本
 
-- 当前源码区不纳入 Llama-2-chat utility pilot、Prism VQA pilot、对应 pilot 面板或旧语言 smoke driver。
-- 这些历史实现、结果及冻结输入仍留在仓库原处，未删除；原 `region_first.py`/`region_search.py` 仅服务旧 pilot 兼容栈。
-- 单 bit 完整枚举验证已按用户要求移除，包括专用代码、测试、Prism 适配器、结果、吞吐检查和诊断日志；删除范围见 `results/migration/` 的移除记录。
-- 保留 run 的历史源码快照可能带有当时的 pilot 依赖；这些快照作为证据原字节保留，不作为当前实验入口。
-- 共享 `alignment_attack/harness.py`、原运行配置及冻结 vendor 依赖保持原处；新实现不导入 pilot driver。
-- 非 pilot 实现已迁移，旧模块/根 CLI 留兼容转发；旧结果路径留相对目录链接。
-- 结果迁移不改写旧计划、源码快照、哈希、输入、日志或已存指标。迁移清单可核对逐文件内容。
-- 旧计划绑定旧源码身份，不能通过重写哈希继续使用；新代码须生成新计划。
-- 本次相关运行进程已暂停、待执行 Slurm 作业已 hold；未自动恢复或重新提交实验，状态见迁移审计。
-- 原共享 `outputs/test_access.jsonl` 留原处；新包的最终访问追加到 `results/test_access.jsonl`。
+- 本包于 2026-11-11 从 `layout_alignment_attack` 仓库分离。内核、路径配置和 VQA 评分已收进包内；内核只保留 in-range 一条数值规则，其余定义逐字未改。
+- 那个仓库研究的是另一个假设（可翻单元图与受限轨道）。它的代码、文档与编号都不属于本包，本包不导入也不引用。
+- `results/` 里的 run 都产生于分离之前，绑定当时的源码身份和旧路径。它们的 `plan.json`、源码快照、哈希、输入、日志和指标原样保留。
+- 旧计划不能续跑，也不能通过重写哈希继续使用；新代码须生成新计划。
+- 保留 run 的历史源码快照可能带有当时的包外依赖；这些快照作为证据原字节保留，不作为当前实验入口。
+- `results/migration/` 记录的是更早一次（2026-11-10）结果搬迁与单 bit 枚举结果删除，与本次分离无关。
+- 最终 test 访问追加到 `results/test_access.jsonl`。
 
 ## 验证与阅读顺序
 
-先读 `harness/region.py`，再读所用 Runtime、`algorithm/search.py` 和对应 experiment；实现细节以各模块 docstring 为准。
-设计与迁移理由见仓库 `docs/decisions/ADR-0021-regionalign-package.md`。
+先读 `AGENTS.md`，再读 `harness/core.py`、`harness/region.py`、所用 Runtime、`algorithm/search.py` 和对应 experiment；实现细节以各模块 docstring 为准。
 
-在仓库根运行 CPU 回归：
+在包的上一级目录运行 CPU 回归：
 
 ```bash
 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python -B -m unittest discover -s regionalign/tests -t . -v
 ```
 
-全仓库要求与证据约束仍以根 `AGENTS.md`、`docs/INVARIANTS.md` 为准。
+操作要求与证据约束以本目录 `AGENTS.md` 为准。

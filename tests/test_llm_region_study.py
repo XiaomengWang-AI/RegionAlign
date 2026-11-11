@@ -180,26 +180,20 @@ class MetricProtocolTests(unittest.TestCase):
 
 
 class FrozenProtocolTests(unittest.TestCase):
-    def test_legacy_import_is_the_same_module_for_existing_mock_targets(self):
-        from alignment_attack import llm_region_study as legacy
-        from alignment_attack import matrix_text_runtime as legacy_runtime
+    def test_formal_runtime_is_the_package_text_runtime(self):
         from regionalign.runtimes import text as runtime
-        self.assertIs(legacy, S)
-        self.assertIs(legacy_runtime, runtime)
         self.assertIs(S.FormalTextRuntime, runtime.FormalTextRuntime)
 
-    def test_source_snapshot_tracks_the_relocated_implementation(self):
+    def test_source_snapshot_tracks_only_package_sources(self):
         expected = {Path("regionalign/experiments/llm.py"),
                     Path("regionalign/runtimes/text.py"),
                     Path("regionalign/experiments/clean_mmlu.py"),
                     Path("regionalign/config.py"),
                     Path("regionalign/harness/core.py"),
                     Path("regionalign/harness/region.py"),
-                    Path("regionalign/algorithm/search.py"),
-                    Path("alignment_attack/harness.py"),
-                    Path("alignment_attack/runtime_config.py")}
+                    Path("regionalign/algorithm/search.py")}
         self.assertTrue(expected <= set(S.SOURCE_RELATIVE))
-        self.assertNotIn(Path("alignment_attack/region_first.py"), S.SOURCE_RELATIVE)
+        self.assertTrue(all(path.parts[0] == "regionalign" for path in S.SOURCE_RELATIVE))
         self.assertEqual(S.SEARCH_SNAPSHOT, "regionalign__algorithm__search.py")
         with tempfile.TemporaryDirectory() as raw:
             run = Path(raw)

@@ -39,12 +39,10 @@ from regionalign import config as C
 
 SOURCES = (
     "regionalign/__init__.py", "regionalign/experiments/__init__.py",
-    "regionalign/harness/__init__.py", "alignment_attack/__init__.py",
+    "regionalign/harness/__init__.py", "regionalign/runtimes/__init__.py",
     "regionalign/experiments/clean_benchmarks.py", "regionalign/experiments/clean_mmlu.py",
     "regionalign/config.py", "regionalign/harness/core.py",
-    "alignment_attack/harness.py", "alignment_attack/runtime_config.py",
-    "config/runtime.json", "vendor/prism_runtime/vlm_downstream.py",
-    "tools/run_clean_benchmarks.py",
+    "regionalign/runtime.json", "regionalign/runtimes/vqa_score.py",
 )
 VLM_TYPES = {"llava-1.5-7b": "llava", "qwen2-vl-7b": "qwen2_vl"}
 SETTINGS = {
@@ -185,7 +183,7 @@ def prepare_retry(args):
                 conditions, retry={"parent_run": str(parent), "parent_plan_sha256": parent_sha,
                     "prior_final_access": M.file_record(parent / "test_access.jsonl"),
                     "failures": failures, "reused_completed_metrics": reused,
-                    "reason": "repair empty normalized VQA reference handling; ADR-0018",
+                    "reason": "repair empty normalized VQA reference handling",
                     "prior_final_exposure": True})
 
 
@@ -304,7 +302,7 @@ def vlm_inputs(key, processor, image, question, device):
 
 
 def reference_answer(answers, task):
-    from vlm_downstream import normalize_vqa_answer
+    from regionalign.runtimes.vqa_score import normalize_vqa_answer
     if not answers or not all(isinstance(x, str) for x in answers):
         raise ValueError("missing or non-string VQA references")
     normalized = [normalize_vqa_answer(x, textvqa=task == "textvqa") for x in answers]
@@ -319,7 +317,7 @@ def reference_answer(answers, task):
 def score_vqa(model, processor, key, image, question, answers, task, device):
     import torch
     import torch.nn.functional as F
-    from vlm_downstream import vqa_score
+    from regionalign.runtimes.vqa_score import vqa_score
     inputs = vlm_inputs(key, processor, image, question, device)
     length = inputs.input_ids.shape[1]
     reference = reference_answer(answers, task)

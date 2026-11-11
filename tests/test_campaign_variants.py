@@ -14,7 +14,7 @@ from regionalign.experiments import campaign_variants as S
 from regionalign.experiments import llm as L
 from regionalign.harness import core as P, region as R
 from regionalign.tests import test_campaign_protocol as fixtures
-from tests.test_text_runtime import tiny_text_runtime
+from regionalign.tests.helpers import tiny_text_runtime
 
 
 class VariantTests(unittest.TestCase):

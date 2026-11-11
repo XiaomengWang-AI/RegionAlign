@@ -12,13 +12,14 @@ import torch
 
 torch.set_num_threads(1)
 
-from tests.test_main_harness import TINY_GROUP, TinyRuntime, tiny_gqa_lm, tiny_lm
-from tests.test_text_runtime import tiny_text_runtime
+from pathlib import Path
 
 from regionalign.algorithm import search as S
 from regionalign.harness import core as P
 from regionalign.harness import region as R
 from regionalign.harness import evidence as E
+from regionalign.tests.helpers import (TINY_GROUP, TinyRuntime, tiny_gqa_lm, tiny_lm,
+                                       tiny_text_runtime)
 
 PAGE = 64
 
@@ -304,23 +305,22 @@ class RandomBaselineCandidateTests(unittest.TestCase):
 
 
 class EvidenceAndIsolationTests(unittest.TestCase):
-    def test_core_is_the_same_shared_state_and_no_pilot_driver_is_imported(self):
-        from alignment_attack import harness
-        self.assertIs(P, harness)
+    def test_package_is_self_contained_and_has_no_cell_or_track_rules(self):
         probe = (
             "import json,sys; import regionalign.experiments.llm; "
             "import regionalign.experiments.vqa; "
             "import regionalign.algorithm.search; "
-            "print(json.dumps(sorted(name for name in sys.modules if name in "
-            "['alignment_attack.region_pilot','alignment_attack.region_vqa',"
-            "'alignment_attack.utility_damage','alignment_attack.region_first',"
-            "'alignment_attack.region_search','alignment_attack.search'])))"
+            "print(json.dumps(sorted(name for name in sys.modules if "
+            "name.split('.')[0] in ('alignment_attack', 'vlm_downstream', 'tests'))))"
         )
-        result = subprocess.run([sys.executable, "-B", "-c", probe],
-                                capture_output=True, text=True, check=True)
+        result = subprocess.run([sys.executable, "-B", "-c", probe], capture_output=True, text=True,
+                                check=True, cwd=Path(__file__).resolve().parents[2])
         self.assertEqual(json.loads(result.stdout.strip().splitlines()[-1]), [])
-        for name in ("TASK", "FORMAT", "region_set", "TUNING_SEED", "evaluate_artifact"):
+        for name in ("TASK", "FORMAT", "TRACK", "MODE", "region_set", "TUNING_SEED", "evaluate_artifact"):
             self.assertFalse(hasattr(R, name), name)
+        for name in ("cell_map", "TRACKS", "MODES", "PROFILED", "GUARDED", "HARDENED", "protected",
+                     "row_bound", "Runtime", "SearchContext", "TASK", "MODEL_DIR"):
+            self.assertFalse(hasattr(P, name), name)
 
     def test_call_accounting_rejects_reset_or_excess_spend(self):
         self.assertEqual(R.budget_reasons({"spent": 300, "calls": {"eval": 294, "grad": 2}}), [])

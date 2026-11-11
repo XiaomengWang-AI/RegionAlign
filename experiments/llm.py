@@ -63,8 +63,6 @@ DEFAULT_MIN_FREE_GPU_GIB = 40.0
 MIN_FREE_POLICY = "available_cuda_memory_before_model_load"
 
 SOURCE_RELATIVE = (
-    Path("run_llm_region_study.py"),
-    Path("alignment_attack/llm_region_study.py"),
     Path("regionalign/__init__.py"),
     Path("regionalign/config.py"),
     Path("regionalign/experiments/__init__.py"),
@@ -77,9 +75,6 @@ SOURCE_RELATIVE = (
     Path("regionalign/harness/region.py"),
     Path("regionalign/algorithm/__init__.py"),
     Path("regionalign/algorithm/search.py"),
-    Path("alignment_attack/__init__.py"),
-    Path("alignment_attack/harness.py"),
-    Path("alignment_attack/runtime_config.py"),
 )
 SEARCH_SNAPSHOT = "regionalign__algorithm__search.py"
 

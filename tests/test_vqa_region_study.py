@@ -64,11 +64,7 @@ class WorkItemTests(unittest.TestCase):
 
 
 class DevelopmentIsolationTests(unittest.TestCase):
-    def test_legacy_import_is_the_same_module_for_existing_mock_targets(self):
-        from alignment_attack import vqa_region_study as legacy
-        self.assertIs(legacy, S)
-
-    def test_source_snapshot_tracks_the_relocated_implementation(self):
+    def test_source_snapshot_tracks_only_package_sources(self):
         expected = {Path("regionalign/experiments/vqa.py"),
                     Path("regionalign/runtimes/vqa.py"),
                     Path("regionalign/experiments/clean_mmlu.py"),
@@ -77,10 +73,10 @@ class DevelopmentIsolationTests(unittest.TestCase):
                     Path("regionalign/harness/core.py"),
                     Path("regionalign/harness/region.py"),
                     Path("regionalign/algorithm/search.py"),
-                    Path("alignment_attack/harness.py"),
-                    Path("alignment_attack/runtime_config.py")}
+                    Path("regionalign/runtimes/vqa_score.py"),
+                    Path("regionalign/runtime.json")}
         self.assertTrue(expected <= set(S.SOURCE_RELATIVE))
-        self.assertNotIn(Path("alignment_attack/region_first.py"), S.SOURCE_RELATIVE)
+        self.assertTrue(all(path.parts[0] == "regionalign" for path in S.SOURCE_RELATIVE))
         self.assertEqual(S.SEARCH_SNAPSHOT, "regionalign__algorithm__search.py")
         with tempfile.TemporaryDirectory() as raw:
             run = Path(raw)

@@ -46,9 +46,9 @@ class WikiTextCleanDevTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             with mock.patch.object(W.C, "PROJECT", root):
-                output = W.C.fresh_output_dir("clean", "validation", "outputs/example")
+                output = W.C.fresh_output_dir("clean", "validation", "regionalign/results/example")
                 with self.assertRaises(FileExistsError):
-                    W.C.fresh_output_dir("clean", "validation", "outputs/example")
+                    W.C.fresh_output_dir("clean", "validation", "regionalign/results/example")
                 W.M.write_json_once(output / "panel.json", {"x": 1})
                 with self.assertRaises(FileExistsError):
                     W.M.write_json_once(output / "panel.json", {"x": 2})

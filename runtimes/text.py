@@ -1,7 +1,7 @@
 """Task-panel runtime for language-only matrix experiments.
 
-This adapter keeps the repository's ``BaseRuntime`` contract while replacing
-the historical VQA-shaped panel with explicit MMLU or WikiText rows.  It does
+This adapter keeps the ``BaseRuntime`` contract of ``harness.core`` and feeds
+it explicit MMLU or WikiText rows.  It does
 not change the quantizer or the legal layout transform.  Rows contain frozen
 token ids, so a search cannot silently resample text or change the prompt
 after gradients have been measured.

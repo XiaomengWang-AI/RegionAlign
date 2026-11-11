@@ -5,7 +5,8 @@ supports the existing INT8/INT4 geometry, legal MHA/GQA/MQA permutations and
 per-arm forward-equivalent accounting. Task scoring, model loading, panel
 selection and experiment-specific artifact audits belong to their drivers.
 
-The legacy region-first pilot keeps its original implementation and protocol.
+The attacker is given the region first and nothing else: any stored bit on the
+page may flip, in either direction.  There is no map of flippable cells.
 """
 from __future__ import annotations
 
@@ -20,8 +21,6 @@ LINEARS = ("self_attn.q_proj", "self_attn.k_proj", "self_attn.v_proj", "self_att
 PAGE_BYTES = P.PAGE_BYTES
 K_SCHEDULE = tuple(range(1, 17))
 K_MAX = max(K_SCHEDULE)
-TRACK = "inrange"
-MODE = "local"
 ARMS = ("noperm", "local", "random")
 AUDIT_KEYS = ("format", "bits", "scope", "schema_version", "total_tensors", "total_parameters",
               "quantized_tensors", "quantized_parameters", "quantized_fraction",
@@ -314,11 +313,11 @@ def random_row(region, d, seed):
 def check_region_attack(rt, region, flips, k):
     """Validate one attack on the deployed (rearranged, unfaulted) model.
 
-    ``harness.check_attack`` supplies the generic rules -- at most ``k`` distinct
-    bits, one tensor, a span of at most 4096 bytes and the ``inrange`` value rule
+    ``core.check_attack`` supplies the generic rules -- at most ``k`` distinct
+    bits, one tensor, a span of at most 4096 bytes and the in-range value rule
     -- and this adds the region's own: every flip in the region tensor, on its page.
     """
-    info = P.check_attack(rt, flips, TRACK, MODE, k)
+    info = P.check_attack(rt, flips, k)
     try:
         actual_bits = P.code_bits(rt.lm, region["tensor"])
     except (AttributeError, KeyError, ValueError) as error:
@@ -355,13 +354,13 @@ def arm_reasons(region, arm, spec, d, seed):
 
 
 def artifact_metadata(rt):
-    """What every artifact declares about the model it was searched on (INV-06)."""
+    """What every artifact declares about the model it was searched on."""
     return {"format": P.weight_format(rt.lm), "task": getattr(rt, "task", None),
             "quantization": P.quantization_audit(rt.lm), "quantization_schema_version": 2}
 
 
 def budget_reasons(artifact, budget=BUDGET):
-    """Why the artifact's recorded compute is not a search within ``budget`` (INV-14).
+    """Why the artifact's recorded compute is not a search within ``budget``.
 
     ``RegionContext`` enforces the budget only inside the search's own process, where
     the search could raise ``ctx.budget`` or reset ``ctx.spent``; the per-kind call

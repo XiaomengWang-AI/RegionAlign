@@ -1,4 +1,4 @@
-"""Independent official-training input adapter (ADR-0025).
+"""Independent official-training input adapter.
 
 This adapter never impersonates an HF dataset revision.  It joins the complete
 official train2014 questions/annotations by ID, applies the existing VQA hash
@@ -214,7 +214,7 @@ def prepare_inputs(output, *, workers=8):
         documents.append(json.loads(content))
     panels, selection = select_metadata(*documents, reference_answer=reference_answer)
     selection["official_source_archives"] = archives
-    # INV-21 / ADR-0025: selection is published before checking image availability.
+    # The selection is published before checking image availability.
     M.write_json_once(root / "selection.json", selection)
     selected = panels["search"] + panels["dev"]
     images = _download_selected(root, selected, workers)
@@ -326,7 +326,7 @@ def prepare_parent(parent_run, inputs, output):
                 conditions=conditions, registered_available_searches=4 * old["work_items_per_condition"],
                 official_okvqa_policy={"scope": SCOPE, "parent_run": str(parent_run),
                                       "parent_plan_sha256": old_hash, **binding},
-                note="Independent official-train extension (ADR-0025); four OK-VQA conditions only; old v2 geometry/model identity inherited; no TextVQA rerun.")
+                note="Independent official-train extension; four OK-VQA conditions only; old v2 geometry/model identity inherited; no TextVQA rerun.")
     if old["repeat_seeds"] != list(D.REPEAT_SEEDS) or old["work_items_per_condition"] != 108:
         raise ValueError("parent bootstrap or matched-arm design differs")
     for record in sources:

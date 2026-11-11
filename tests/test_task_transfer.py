@@ -14,7 +14,7 @@ import torch
 from regionalign.algorithm import search as A
 from regionalign.experiments import task_transfer as T
 from regionalign.runtimes.vqa import HFVQARegionRuntime
-from tests.test_main_harness import TINY_GROUP, tiny_lm
+from regionalign.tests.helpers import TINY_GROUP, tiny_lm
 
 
 class TinyVLM(torch.nn.Module):

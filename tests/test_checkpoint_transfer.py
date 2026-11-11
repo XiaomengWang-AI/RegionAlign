@@ -14,7 +14,7 @@ from transformers import LlamaConfig, LlamaForCausalLM
 from regionalign import config as C
 from regionalign.experiments import checkpoint_transfer as T
 from regionalign.algorithm import search as A
-from tests.test_text_runtime import StubTokenizer
+from regionalign.tests.helpers import StubTokenizer
 
 
 class CheckpointTransferTests(unittest.TestCase):

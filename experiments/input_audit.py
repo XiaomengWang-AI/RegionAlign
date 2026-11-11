@@ -1,10 +1,10 @@
 """Audit and execute the reproducible model/data matrix for the new protocol.
 
-The repository already contains separate, audited clean MMLU and WikiText
+The package already contains separate, audited clean MMLU and WikiText
 drivers.  This module is the small orchestration layer that freezes the matrix
 inputs before a run.  It deliberately refuses to label a condition as an
 attack result until a task-specific runtime and region evaluator are present;
-the existing Prism VQA runtime cannot be silently reused for LLaVA or Qwen-VL.
+a runtime written for one VQA model cannot be silently reused for another.
 
 The ``audit`` command is offline and write-once.  ``download`` is an explicit
 opt-in helper for missing public inputs and is never called by ``audit``.
@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import platform
 import sys
 from datetime import datetime, timezone
@@ -23,7 +22,12 @@ from pathlib import Path
 from regionalign import config as C
 
 SCHEMA = 1
-HF_HOME_DEFAULT = Path("/vol/das-nobackup/users/xwang/huggingface_cache")
+
+
+def cache_root(args):
+    """The cache to audit or fill: an explicit ``--hf-home``, else the package's configured one."""
+    return Path(args.hf_home or C.HUB).expanduser().absolute()
+
 
 MODELS = {
     "llama2-7b": {
@@ -99,7 +103,7 @@ DATASETS = {
 }
 
 CODE_INVENTORY = {
-    "quantization_and_permutation": ["alignment_attack/harness.py"],
+    "quantization_and_permutation": ["regionalign/harness/core.py"],
     "region_search": ["regionalign/harness/region.py", "regionalign/algorithm/search.py"],
     "clean_mmlu": ["regionalign/experiments/clean_mmlu.py"],
     "clean_wikitext": ["regionalign/experiments/clean_wikitext.py"],
@@ -172,7 +176,7 @@ def dataset_status(hf_home: Path, spec):
 
 
 def audit(args):
-    hf_home = Path(args.hf_home or os.environ.get("HF_HOME") or HF_HOME_DEFAULT).expanduser().absolute()
+    hf_home = cache_root(args)
     code = {group: [{"path": path, "exists": (C.PROJECT / path).is_file()}
                     for path in paths] for group, paths in CODE_INVENTORY.items()}
     result = {
@@ -209,7 +213,7 @@ def audit(args):
 
 def download(args):
     """Download only an explicitly named missing public input."""
-    hf_home = Path(args.hf_home or os.environ.get("HF_HOME") or HF_HOME_DEFAULT).expanduser()
+    hf_home = cache_root(args)
     if args.model:
         from huggingface_hub import snapshot_download
         spec = MODELS[args.model]

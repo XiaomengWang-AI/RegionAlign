@@ -3,18 +3,18 @@
 This is a parallel evaluation path rather than a registered attack task.  It
 does not construct faults, inspect gradients, rank weight bits, or call the
 RegionAlign search.  Its purpose is to measure clean task utility for exact
-base checkpoints under the repository's schema-2 quantizer.  A run freezes the
+base checkpoints under the package's schema-2 quantizer.  A run freezes the
 source, checkpoint files, and cached MMLU Arrow files before inference; final
 test access is explicit and every completed output is write-once.
 
 Commands::
 
     python -B -m regionalign.experiments.clean_mmlu plan --model llama2-7b=/path ...
-    python -B -m regionalign.experiments.clean_mmlu run --run outputs/mmlu_clean/<id> \
+    python -B -m regionalign.experiments.clean_mmlu run --run regionalign/results/mmlu_clean/<id> \
         --model llama2-7b --format int8 --split validation
-    python -B -m regionalign.experiments.clean_mmlu run --run outputs/mmlu_clean/<id> \
+    python -B -m regionalign.experiments.clean_mmlu run --run regionalign/results/mmlu_clean/<id> \
         --model llama2-7b --format int8 --split test --final
-    python -B -m regionalign.experiments.clean_mmlu summarize --run outputs/mmlu_clean/<id>
+    python -B -m regionalign.experiments.clean_mmlu summarize --run regionalign/results/mmlu_clean/<id>
 
 MMLU uses the canonical subject header, five fixed development examples per
 subject, and next-token scores for the labels A/B/C/D.  A label token is the
@@ -91,13 +91,7 @@ SOURCE_RELATIVE = (
     Path("regionalign/experiments/clean_mmlu.py"),
     Path("regionalign/config.py"),
     Path("regionalign/harness/core.py"),
-    Path("alignment_attack/harness.py"),
-    Path("alignment_attack/runtime_config.py"),
     Path("regionalign/reporting/mmlu.py"),
-    Path("alignment_attack/__init__.py"),
-    Path("alignment_attack/mmlu_clean.py"),
-    Path("run_mmlu_clean.py"),
-    Path("tools/summarize_mmlu_clean.py"),
 )
 
 

@@ -125,10 +125,6 @@ class LayoutTests(unittest.TestCase):
 
 
 class RuntimeContractTests(unittest.TestCase):
-    def test_legacy_import_is_the_same_runtime_module(self):
-        from alignment_attack import matrix_vqa_runtime as legacy
-        self.assertIs(legacy, V)
-
     def test_qwen_positions_use_the_models_multimodal_index(self):
         import torch
         expected_positions = torch.arange(9).reshape(3, 1, 3)

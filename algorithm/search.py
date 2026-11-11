@@ -1,7 +1,7 @@
 """Region-first search: pick what the page should hold, then the bits inside it.
 
 Contract: ``search(ctx) -> {"permutation": spec, "attacks": {k: flips}}`` for
-k = 1..16, where ``ctx`` is a ``region_first.RegionContext``, flips are in the
+k = 1..16, where ``ctx`` is a ``region.RegionContext``, flips are in the
 **deployed** model's coordinates and every search-panel loss, gradient and
 activation profile is charged against ``ctx``'s budget. Whether the result is
 allowed is the evaluator's call (``ctx.check``), never this module's.
@@ -66,7 +66,7 @@ def move_table(ctx, W, g, act, rows, cols=None):
     n_cols = W.shape[1]
     cols = torch.arange(n_cols, device=W.device) if cols is None else cols
     rows = torch.as_tensor(rows, device=W.device)
-    bound = P.row_bound(W, R.TRACK)
+    bound = P.row_absmax(W)
     ninf = torch.tensor(float("-inf"), device=W.device)
     out = [[], [], [], []]
     step = max(1, BLOCK // len(cols))
@@ -80,7 +80,7 @@ def move_table(ctx, W, g, act, rows, cols=None):
         size_bit = torch.zeros_like(fo_bit)
         for b in range(P.code_bits(lm, name)):
             new = P.coded_values(lm, name, index, codes ^ (1 << b)).float()
-            ok = P.value_allowed(R.TRACK, new, rb)
+            ok = P.value_allowed(new, rb)
             gain = torch.where(ok, grad * (new - w), ninf)
             moved = torch.where(ok, (new - w).abs() * a, ninf)
             better = gain > fo

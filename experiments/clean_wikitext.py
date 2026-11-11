@@ -3,11 +3,11 @@
 Prepare one tokenizer-independent panel, then reuse it across all conditions::
 
     python -B -m regionalign.experiments.clean_wikitext prepare \
-        --data-file /cache/wikitext-validation.arrow --output outputs/clean/panel
+        --data-file /cache/wikitext-validation.arrow --output regionalign/results/clean/panel
     python -B -m regionalign.experiments.clean_wikitext run \
-        --data-file /cache/wikitext-validation.arrow --panel outputs/clean/panel/panel.json \
+        --data-file /cache/wikitext-validation.arrow --panel regionalign/results/clean/panel/panel.json \
         --model-dir /checkpoint --model-name llama2-7b --format int8 \
-        --device cuda:0 --output outputs/clean/llama2_int8
+        --device cuda:0 --output regionalign/results/clean/llama2_int8
 
 Only validation Arrow input is accepted. This module has no search, gradient,
 fault, permutation, or final-test evaluation path. The panel consists of fixed,
@@ -41,11 +41,9 @@ MAX_TOKENS = 512
 DEFAULT_MIN_FREE_GPU_GIB = 8
 SOURCES = (
     "regionalign/__init__.py", "regionalign/experiments/__init__.py",
-    "regionalign/harness/__init__.py", "alignment_attack/__init__.py",
+    "regionalign/harness/__init__.py",
     "regionalign/experiments/clean_wikitext.py", "regionalign/experiments/clean_mmlu.py",
     "regionalign/config.py", "regionalign/harness/core.py",
-    "alignment_attack/harness.py", "alignment_attack/runtime_config.py",
-    "tools/run_wikitext_clean_dev.py",
 )
 
 

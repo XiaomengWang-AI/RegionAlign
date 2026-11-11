@@ -7,7 +7,7 @@ from unittest import mock
 
 import torch
 
-from tests.test_main_harness import TINY_GROUP, tiny_lm
+from regionalign.tests.helpers import TINY_GROUP, tiny_lm
 from regionalign.experiments import layout_validation as V, llm as L
 from regionalign.runtimes.text import FormalTextRuntime
 

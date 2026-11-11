@@ -4,7 +4,7 @@ from unittest import mock
 
 import torch
 
-from tests.test_main_harness import TINY_GROUP, tiny_lm
+from regionalign.tests.helpers import TINY_GROUP, tiny_lm
 from regionalign.experiments import bounded_checksum as B
 from regionalign.harness import core as P, region as R
 

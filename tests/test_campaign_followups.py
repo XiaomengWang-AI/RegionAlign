@@ -18,7 +18,7 @@ from regionalign.algorithm import search as A
 from regionalign.experiments import campaign_evaluation as E, llm as L
 from regionalign.harness import core as P, region as R
 from regionalign.runtimes.text import FormalTextRuntime
-from tests.test_main_harness import TINY_GROUP, tiny_lm
+from regionalign.tests.helpers import TINY_GROUP, tiny_lm
 
 
 class CampaignFollowupTests(unittest.TestCase):

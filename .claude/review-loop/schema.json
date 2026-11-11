@@ -1,0 +1,36 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "summary", "findings"],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["clean", "issues"],
+      "description": "clean = no P0/P1 defect found in this diff"
+    },
+    "summary": {
+      "type": "string",
+      "description": "One or two sentences on what the diff does and the overall judgement."
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "file", "line", "title", "why", "fix"],
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": ["P0", "P1", "P2"],
+            "description": "P0 = breaks correctness or a documented invariant; P1 = real bug or contract violation; P2 = minor, non-blocking"
+          },
+          "file": {"type": "string"},
+          "line": {"type": "integer"},
+          "title": {"type": "string"},
+          "why": {"type": "string", "description": "Concrete failure scenario: inputs/state -> wrong output. Not a style opinion."},
+          "fix": {"type": "string"}
+        }
+      }
+    }
+  }
+}

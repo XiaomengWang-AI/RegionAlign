@@ -69,8 +69,6 @@ MODEL_SPECS = {
 }
 
 SOURCE_RELATIVE = (
-    Path("run_vqa_region_study.py"),
-    Path("alignment_attack/vqa_region_study.py"),
     Path("regionalign/__init__.py"),
     Path("regionalign/config.py"),
     Path("regionalign/experiments/__init__.py"),
@@ -79,16 +77,13 @@ SOURCE_RELATIVE = (
     Path("regionalign/experiments/clean_benchmarks.py"),
     Path("regionalign/runtimes/__init__.py"),
     Path("regionalign/runtimes/vqa.py"),
+    Path("regionalign/runtimes/vqa_score.py"),
     Path("regionalign/harness/__init__.py"),
     Path("regionalign/harness/core.py"),
     Path("regionalign/harness/region.py"),
     Path("regionalign/algorithm/__init__.py"),
     Path("regionalign/algorithm/search.py"),
-    Path("alignment_attack/__init__.py"),
-    Path("alignment_attack/harness.py"),
-    Path("alignment_attack/runtime_config.py"),
-    Path("vendor/prism_runtime/vlm_downstream.py"),
-    Path("config/runtime.json"),
+    Path("regionalign/runtime.json"),
 )
 SEARCH_SNAPSHOT = "regionalign__algorithm__search.py"
 

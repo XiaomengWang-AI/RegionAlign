@@ -137,7 +137,7 @@ def select_train_panels(records, task, search_rows=SEARCH_ROWS, dev_rows=DEV_ROW
     if type(search_rows) is not int or type(dev_rows) is not int or min(search_rows, dev_rows) < 1:
         raise ValueError("panel sizes must be positive integers")
     if reference_answer is None:
-        from . import runtime_config as C
+        from regionalign import config as C
         C.setup_environment()
         reference_answer = _clean_module().reference_answer
     by_image = {}
@@ -221,7 +221,7 @@ def load_train_panels(paths, task, **kwargs):
     if type(search_rows) is not int or type(dev_rows) is not int or min(search_rows, dev_rows) < 1:
         raise ValueError("panel sizes must be positive integers")
     if reference_answer is None:
-        from . import runtime_config as C
+        from regionalign import config as C
         C.setup_environment()
         reference_answer = _clean_module().reference_answer
 
@@ -467,7 +467,7 @@ class HFVQARegionRuntime:
     def accuracy(self, rows):
         """Official normalized VQA score and generation diagnostics on supplied dev rows."""
         import torch
-        from vlm_downstream import vqa_score
+        from regionalign.runtimes.vqa_score import vqa_score
         records = []
         for row in rows:
             inputs = self._to_device(self._prompt(row))

@@ -103,7 +103,7 @@ def prepare(source_run, output, mode, clean_mmlu_run=None, clean_benchmark_run=N
     relatives += [SELF, "regionalign/experiments/clean_benchmarks.py",
                   "regionalign/runtimes/text.py", "regionalign/runtimes/vqa.py",
                   "regionalign/harness/evidence.py",
-                  "vendor/prism_runtime/vlm_downstream.py"]
+                  "regionalign/runtimes/vqa_score.py"]
     conditions = []
     by_key = {(row["model"], row["format"], row["task"]): row for row in source["conditions"]}
     for condition in source["conditions"]:
