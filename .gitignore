@@ -1,0 +1,8 @@
+# Evidence tree: append-only, far too large for version control.
+results/
+# Local caches and interpreter leftovers.
+.cache/
+__pycache__/
+*.pyc
+# Per-session state of the Codex review loop.
+.claude/review-loop/state/
