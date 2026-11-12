@@ -98,8 +98,9 @@ def move_table(ctx, W, g, act, rows, cols=None):
             new = P.coded_values(lm, name, index, codes ^ (1 << b),
                                  bits=bits, scales=scales, dtype=dtype).float()
             ok = P.value_allowed(new, rb)
-            gain = torch.where(ok, grad * (new - w), ninf)
-            moved = torch.where(ok, (new - w).abs() * a, ninf)
+            delta = new - w
+            gain = torch.where(ok, grad * delta, ninf)
+            moved = torch.where(ok, delta.abs() * a, ninf)
             better = gain > fo
             fo, fo_bit = torch.where(better, gain, fo), torch.where(better, b, fo_bit)
             better = moved > size
