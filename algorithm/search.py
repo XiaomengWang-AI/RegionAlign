@@ -22,10 +22,15 @@ page, exactly as it does for the other arms.
    and on the two down_proj pages the size-best flip beat the first-order-best
    in every screened row (62/62, 68/68). Both rankings are kept, size leading
    (``SIZE_LEAD`` size candidates per first-order one).
-2. **Groups by successive halving** (``local``): the size-best single flip of the
-   ``ROWS_SIZE`` best rows by size and the ``ROWS_FO`` best by first order is
-   measured exactly, then the budget concentrates on the survivors round by
-   round (``HALVING``) -- fixed-budget best-arm identification (Karnin et al.).
+2. **Groups by successive halving** (``local``): candidate layouts are the
+   ``ROWS_SIZE`` best rows by size reach and the ``ROWS_FO`` best by first-order
+   reach, where a row's reach is the sum of its top-``K_MAX`` allowed single-bit
+   scores -- a free surrogate of multi-bit potential, not just its single best
+   flip. The first halving round is seeded by that same free surrogate
+   (``Group.surrogate``), so no budget is spent measuring one flip of every
+   group; only the kept survivors are ever measured exactly, and the budget then
+   concentrates on them round by round (``HALVING``) -- fixed-budget best-arm
+   identification (Karnin et al.).
 3. **Growth by lazy greedy** inside a group: single flips are measured exactly
    once, and each budget step accepts the candidate with the largest *current*
    marginal rise, re-measuring a candidate only when its stale value would win
@@ -42,8 +47,8 @@ from regionalign.harness import core as P
 from regionalign.harness import region as R
 
 BLOCK = 1 << 22                      # weights per block of the candidate pass
-ROWS_SIZE = 24                       # local: best rows by size whose best single flip is measured
-ROWS_FO = 8                          # ... and by first order
+ROWS_SIZE = 24                       # local: best rows by top-K_MAX size reach
+ROWS_FO = 8                          # ... and by top-K_MAX first-order reach
 SIZE_LEAD = 3                        # size candidates per first-order candidate in a ranking
 HALVING = ((4, 2, 0.35), (2, 6, 0.5), (1, R.K_MAX, 1.0))   # (survivors, grow to k, share left)
 FIRST_SCREEN = 0.4                   # share of a group's allowance screened before growing
@@ -54,6 +59,16 @@ REFRESH_GRAD = True                  # re-measure the gradient as well as the ac
 
 def finite(value):
     return value == value and value not in (float("inf"), float("-inf"))
+
+
+def row_potential(scores, k=R.K_MAX):
+    """Free multi-bit reach surrogate: along the last axis, the sum of the top-``k``
+    allowed, attack-positive candidate scores (disallowed or loss-reducing moves
+    count as zero). On a 2-D score table this is per row; on a 1-D one it is the
+    whole group's reach. Uses only the already-measured score tables, so it costs
+    no budget."""
+    usable = scores.masked_fill(~torch.isfinite(scores), 0.0).clamp(min=0.0)
+    return usable.topk(min(k, usable.shape[-1]), dim=-1).values.sum(dim=-1)
 
 
 def afford(ctx, kind, limit, n=1):
@@ -121,14 +136,11 @@ class Group:
     def __init__(self, row, cols, table, base, fixed_spec=None, ranking_limit=4096):
         self.row, self.cols, self.base, self.fixed_spec = row, cols, base, fixed_spec
         self.queue = ranking(*table, limit=ranking_limit)
+        self.surrogate = float(row_potential(table[3]))   # free top-K_MAX size reach
         self.cursor = 0                    # next unscreened position of ``queue``
         self.marginal = {}                 # (element, bit) -> (rise, len(chosen) when measured)
-        self.single = {}                   # (element, bit) -> exact rise of the flip alone
         self.chosen, self.rise, self.attacks = [], 0.0, []
         self.refreshed = False
-
-    def best_single(self):
-        return max(self.single.values(), default=float("-inf"))
 
     def auc(self):
         rises = [r for _, r in self.attacks] + [self.rise] * (R.K_MAX - len(self.attacks))
@@ -142,8 +154,6 @@ def measure(ctx, group, flip, limit):
     value = ctx.nll(group.chosen + [[ctx.name, *flip]])
     rise = value - group.base - group.rise if finite(value) else float("-inf")
     group.marginal[flip] = (rise, len(group.chosen))
-    if not group.chosen:
-        group.single[flip] = rise
     return True
 
 
@@ -267,8 +277,8 @@ def groups_of(ctx, W, state, base):
         cols = None if movable else torch.arange(first, stop, device=W.device)
         fo, fo_bit, size, size_bit, cols = move_table(ctx, W, g, act, rows, cols)
         pick = list(dict.fromkeys(
-            size.max(1).values.topk(min(ROWS_SIZE, len(rows))).indices.tolist()
-            + fo.max(1).values.topk(min(ROWS_FO, len(rows))).indices.tolist()))
+            row_potential(size).topk(min(ROWS_SIZE, len(rows))).indices.tolist()
+            + row_potential(fo).topk(min(ROWS_FO, len(rows))).indices.tolist()))
         for i in pick:
             table = (rows[i] * W.shape[1] + cols, fo[i], fo_bit[i], size[i], size_bit[i])
             groups.append(Group(rows[i], None if movable else cols, table, base))
@@ -281,11 +291,9 @@ def search(ctx):
     state = {"g": ctx.grad(), "act": ctx.profile()}
     groups = groups_of(ctx, W, state, base)
     if ctx.arm == "local":
-        for group in groups:                         # the size-best single flip of every group
-            screen_next(ctx, group, 1, ctx.budget)
-        survivors = groups
-        for count, until, share in HALVING:
-            survivors = sorted(survivors, key=lambda gr: gr.auc() if gr.attacks else gr.best_single(),
+        survivors = groups                           # seeded by the free reach surrogate; only
+        for count, until, share in HALVING:          # the kept survivors are ever measured exactly
+            survivors = sorted(survivors, key=lambda gr: gr.auc() if gr.attacks else gr.surrogate,
                                reverse=True)[:count]
             allowance = int(ctx.remaining() * share) // len(survivors)
             for group in survivors:
