@@ -46,7 +46,7 @@ import torch
 from regionalign.harness import core as P
 from regionalign.harness import region as R
 
-BLOCK = 1 << 22                      # weights per block of the candidate pass
+BLOCK = 1 << 21                      # weights per block of the candidate pass (move_table peak-memory knob)
 ROWS_SIZE = 24                       # local: best rows by top-K_MAX size reach
 ROWS_FO = 8                          # ... and by top-K_MAX first-order reach
 SIZE_LEAD = 3                        # size candidates per first-order candidate in a ranking
