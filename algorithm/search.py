@@ -90,11 +90,13 @@ def move_table(ctx, W, g, act, rows, cols=None):
         index = (r[:, None] * n_cols + cols[None, :]).reshape(-1)
         codes, w = P.stored_codes(lm, name, index), W.view(-1)[index].float()
         grad, a, rb = g.view(-1)[index], act[index % n_cols], bound[index // n_cols]
+        bits, scales, dtype = P.decode_constants(lm, name, index)   # fixed per block; out of the bit sweep
         fo, size = torch.full_like(w, float("-inf")), torch.full_like(w, float("-inf"))
         fo_bit = torch.zeros(w.shape, dtype=torch.int8, device=W.device)
         size_bit = torch.zeros_like(fo_bit)
-        for b in range(P.code_bits(lm, name)):
-            new = P.coded_values(lm, name, index, codes ^ (1 << b)).float()
+        for b in range(bits):
+            new = P.coded_values(lm, name, index, codes ^ (1 << b),
+                                 bits=bits, scales=scales, dtype=dtype).float()
             ok = P.value_allowed(new, rb)
             gain = torch.where(ok, grad * (new - w), ninf)
             moved = torch.where(ok, (new - w).abs() * a, ninf)

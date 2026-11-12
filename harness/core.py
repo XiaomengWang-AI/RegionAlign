@@ -207,14 +207,36 @@ def stored_codes(lm, name, index):
     return int_codes(lm, name, index) & ((1 << bits) - 1)
 
 
-def coded_values(lm, name, index, codes):
-    """Decoded weights (tensor dtype) for unsigned stored ``codes`` at flat ``index``."""
-    import torch
+def decode_constants(lm, name, index):
+    """Decode constants ``(bits, scales, dtype)`` at flat ``index`` -- the parts of
+    ``coded_values`` that depend only on ``name`` and ``index``, never on the codes.
+    A per-bit sweep over one fixed ``index`` computes these once and passes them to
+    ``coded_values`` instead of having each call re-derive them; the result is the
+    same either way. ``scales`` and ``dtype`` are ``None`` for an unquantized tensor."""
     bits = code_bits(lm, name)
+    if bits == 16:
+        return bits, None, None
+    return bits, _scales_at(lm, name, index), lm.get_parameter(name).dtype
+
+
+def coded_values(lm, name, index, codes, bits=None, scales=None, dtype=None):
+    """Decoded weights (tensor dtype) for unsigned stored ``codes`` at flat ``index``.
+
+    ``bits``, ``scales`` and ``dtype`` are the index-dependent decode constants
+    (see ``decode_constants``); when omitted they are looked up here, so passing
+    them in is only a speed-up for repeated decodes at one ``index`` and never
+    changes the result."""
+    import torch
+    if bits is None:
+        bits = code_bits(lm, name)
     signed = codes - (codes >= 1 << (bits - 1)).long() * (1 << bits)
     if bits == 16:
         return signed.to(torch.int16).view(torch.bfloat16)
-    return (signed.float() * _scales_at(lm, name, index)).to(lm.get_parameter(name).dtype)
+    if scales is None:
+        scales = _scales_at(lm, name, index)
+    if dtype is None:
+        dtype = lm.get_parameter(name).dtype
+    return (signed.float() * scales).to(dtype)
 
 
 def group_preserving(order, group):
