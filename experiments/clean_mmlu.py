@@ -96,6 +96,20 @@ MODEL_SPECS = {
         "hidden_size": 1536, "intermediate_size": 8960, "num_hidden_layers": 28,
         "num_attention_heads": 12, "num_key_value_heads": 2, "vocab_size": 151936,
     },
+    "stablelm2-1.6b": {
+        "cache_component": "models--stabilityai--stablelm-2-1_6b",
+        "repository": "stabilityai/stablelm-2-1_6b",
+        "architecture": ["StableLmForCausalLM"], "model_type": "stablelm",
+        "hidden_size": 2048, "intermediate_size": 5632, "num_hidden_layers": 24,
+        "num_attention_heads": 32, "num_key_value_heads": 32, "vocab_size": 100352,
+    },
+    "smollm2-1.7b": {
+        "cache_component": "models--HuggingFaceTB--SmolLM2-1.7B",
+        "repository": "HuggingFaceTB/SmolLM2-1.7B",
+        "architecture": ["LlamaForCausalLM"], "model_type": "llama",
+        "hidden_size": 2048, "intermediate_size": 8192, "num_hidden_layers": 24,
+        "num_attention_heads": 32, "num_key_value_heads": 32, "vocab_size": 49152,
+    },
 }
 # The clean paper matrix and its summary are defined on these three checkpoints.  The
 # other registered checkpoints are available to the RegionAlign development matrix only.

@@ -23,14 +23,23 @@ class TinyVLM(torch.nn.Module):
         super().__init__()
         self.language_model = language
         self.multi_modal_projector = torch.nn.Identity()
+        self.visual = torch.nn.Identity()
         self.config = language.config
         self.generation_config = language.generation_config
         self.generation_config.pad_token_id = 0
 
+    def get_rope_index(self, input_ids, image_grid_thw=None, video_grid_thw=None, attention_mask=None):
+        if attention_mask is None:
+            attention_mask = torch.ones_like(input_ids)
+        position_ids = (attention_mask.long().cumsum(-1) - 1).clamp_min(0)
+        return position_ids, torch.zeros(input_ids.shape[0], 1, dtype=torch.long)
+
     def forward(self, **kwargs):
+        kwargs.pop("rope_deltas", None)
         return self.language_model(**kwargs)
 
     def generate(self, **kwargs):
+        kwargs.pop("rope_deltas", None)
         return self.language_model.generate(**kwargs)
 
 
@@ -69,11 +78,11 @@ class TaskTransferTests(unittest.TestCase):
                          "repository": T.V.MODEL_SPECS[model]["repository"], "revision": "fixture",
                          "dims": T.P.dims(tiny_lm()),
                          "files": [{"path": "config.json", "bytes": 2, "sha256": "a" * 64}]}
-                  for model in T.V.MODELS}
+                  for model in T.V.DEV_MODELS}
         for manifest in models.values():
             manifest["manifest_sha256"] = T.M.object_sha256(manifest)
         conditions = []
-        for model in T.V.MODELS:
+        for model in T.V.DEV_MODELS:
             for fmt in T.V.FORMATS:
                 language = tiny_lm()
                 T.P.quantize(language, fmt, group=TINY_GROUP)
@@ -122,12 +131,12 @@ class TaskTransferTests(unittest.TestCase):
         audit = T.P.quantization_audit(language)
         audit["visual_parameters_unchanged"] = True
         runtime = HFVQARegionRuntime(model, SimpleNamespace(tokenizer=tokenizer), language,
-                    {"dev": rows}, "llava-1.5-7b", target_task, "cpu", quantization=audit)
+                    {"dev": rows}, "qwen2-vl-2b", target_task, "cpu", quantization=audit)
         runtime.max_new_tokens = 2
         for index, row in enumerate(runtime.rows["dev"]):
             ids = torch.tensor([[1, 10 + index, 12]])
             runtime._prompt_cache[row["sid"]] = {"input_ids": ids, "attention_mask": torch.ones_like(ids)}
-        condition = next(c for c in source["conditions"] if c["model"] == "llava-1.5-7b" and c["format"] == fmt)
+        condition = next(c for c in source["conditions"] if c["model"] == "qwen2-vl-2b" and c["format"] == fmt)
         fingerprint = T.R.model_checksum(language)
         original_bytes = {}
         for source_condition in source["conditions"]:
@@ -163,7 +172,7 @@ class TaskTransferTests(unittest.TestCase):
                     original_bytes[item["name"]] = artifact_path.read_bytes()
         self.assertEqual(T.R.model_checksum(language), fingerprint)
         selection = T.seal(run)
-        self.assertEqual(len(selection["records"]), 432)
+        self.assertEqual(len(selection["records"]), 216)
         return SimpleNamespace(run=run, source_run=source_run, target_run=target_run, source=source,
             target=target, runtime=runtime, condition=condition, fingerprint=fingerprint,
             original_bytes=original_bytes)
@@ -247,7 +256,7 @@ class TaskTransferTests(unittest.TestCase):
         for change in ("checkpoint", "geometry", "execution"):
             changed = copy.deepcopy(right)
             if change == "checkpoint":
-                changed["models"][T.V.MODELS[0]]["revision"] = "different"
+                changed["models"][T.V.DEV_MODELS[0]]["revision"] = "different"
             elif change == "geometry":
                 changed["conditions"][0]["regions"][0]["page_index"] = "different"
             else:
@@ -260,7 +269,7 @@ class TaskTransferTests(unittest.TestCase):
     def test_manifest_embedded_digest_uses_pre_digest_body_and_detects_bad_bindings(self):
         _, source = self.parent("source", "textvqa")
         _, target = self.parent("target", "okvqa")
-        self.assertEqual(len(T._conditions(source, "textvqa", target, "okvqa")), 4)
+        self.assertEqual(len(T._conditions(source, "textvqa", target, "okvqa")), 2)
         for plan in (source, target):
             for condition in plan["conditions"]:
                 manifest = plan["models"][condition["model"]]
@@ -272,8 +281,8 @@ class TaskTransferTests(unittest.TestCase):
     def test_seal_is_all_items_without_filtering_errors_and_selection_drift_fails(self):
         f = self.fixture()
         selection = T.M.read_json(f.run / "selection.json")
-        self.assertEqual(len(selection["records"]), 432)
-        self.assertEqual(sum(row["development_status"] == "artifact_error" for row in selection["records"]), 429)
+        self.assertEqual(len(selection["records"]), 216)
+        self.assertEqual(sum(row["development_status"] == "artifact_error" for row in selection["records"]), 213)
         with self.assertRaises(FileExistsError):
             T.seal(f.run)
         selection["records"].pop()

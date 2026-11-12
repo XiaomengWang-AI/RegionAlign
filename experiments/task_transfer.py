@@ -74,7 +74,7 @@ def _conditions(source, source_task, target, target_task):
             or source.get("success_relative_score_drop") != V.VQA_SUCCESS_DROP):
         raise ValueError("not the formal four-condition three-arm VQA baseline")
     found = []
-    for model in V.MODELS:
+    for model in V.DEV_MODELS:
         for fmt in V.FORMATS:
             sides = []
             for plan, task in ((source, source_task), (target, target_task)):

@@ -38,7 +38,12 @@ from regionalign import config as C
 
 SCHEMA_VERSION = 2
 SCOPE = "vqa_regionalign_dev"
-MODELS = V.MODEL_KEYS
+# ``MODELS`` is the frozen official OK-VQA parent set: ``official_okvqa`` (which
+# must not change) binds its four-condition parent to exactly these two VLMs x
+# two formats.  The development matrix uses ``DEV_MODELS`` instead, which is a
+# non-empty subset of ``V.MODEL_KEYS`` and may hold any number of models.
+MODELS = ("llava-1.5-7b", "qwen2-vl-7b")
+DEV_MODELS = ("qwen2-vl-2b",)
 FORMATS = ("int8", "int4")
 TASKS = V.TASKS
 ARMS = ("noperm", "local", "random")
@@ -65,6 +70,11 @@ MODEL_SPECS = {
         "cache_component": "models--Qwen--Qwen2-VL-7B-Instruct",
         "repository": "Qwen/Qwen2-VL-7B-Instruct", "model_type": "qwen2_vl",
         "layers": 28, "hidden": 3584, "mlp": 18944, "heads": 28, "kv_heads": 4,
+    },
+    "qwen2-vl-2b": {
+        "cache_component": "models--Qwen--Qwen2-VL-2B-Instruct",
+        "repository": "Qwen/Qwen2-VL-2B-Instruct", "model_type": "qwen2_vl",
+        "layers": 28, "hidden": 1536, "mlp": 8960, "heads": 12, "kv_heads": 2,
     },
 }
 
@@ -205,14 +215,14 @@ def _parse_models(entries):
         if "=" not in entry:
             raise ValueError("--model entries use name=/checkpoint")
         name, raw = entry.split("=", 1)
-        if name not in MODELS or name in models:
+        if name not in DEV_MODELS or name in models:
             raise ValueError(f"invalid or duplicate model key {name!r}")
         path = Path(raw).expanduser().resolve()
         if not path.is_dir():
             raise FileNotFoundError(path)
         models[name] = path
-    if set(models) != set(MODELS):
-        raise ValueError(f"formal plan requires exactly {sorted(MODELS)}")
+    if not models:
+        raise ValueError(f"a formal plan names at least one of {sorted(DEV_MODELS)}")
     return models
 
 
@@ -336,8 +346,8 @@ def make_plan(run, models, task_paths, missing_tasks=(), note=""):
     if run.exists() and any(run.iterdir()):
         raise FileExistsError(f"run directory is not empty: {run}")
     run.mkdir(parents=True, exist_ok=True)
-    if set(models) != set(MODELS):
-        raise ValueError("formal VQA plan requires both registered models")
+    if not models or not set(models) <= set(DEV_MODELS):
+        raise ValueError(f"formal VQA plan names a non-empty subset of {sorted(DEV_MODELS)}")
     missing_tasks = set(missing_tasks)
     if missing_tasks - set(TASKS):
         raise ValueError(f"unknown missing tasks: {sorted(missing_tasks - set(TASKS))}")
@@ -353,7 +363,7 @@ def make_plan(run, models, task_paths, missing_tasks=(), note=""):
     datasets = {task: _freeze_dataset(run, task, normalized_paths[task],
                                       task in missing_tasks) for task in TASKS}
     conditions = []
-    for model_key in MODELS:
+    for model_key in [key for key in DEV_MODELS if key in models]:
         base_dims = checkpoints[model_key]["dims"]
         for fmt in FORMATS:
             # Legal INT4 input-axis transforms must preserve the same scale

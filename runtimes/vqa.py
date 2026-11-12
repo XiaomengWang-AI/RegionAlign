@@ -27,7 +27,10 @@ import re
 
 from regionalign.harness import core as P, region as R
 
-MODEL_KEYS = ("llava-1.5-7b", "qwen2-vl-7b")
+# Registry of known VLMs accepted by the runtime.  The development matrix
+# chooses a subset of these (``experiments.vqa.DEV_MODELS``); the frozen
+# official OK-VQA parent binds its own subset (``experiments.vqa.MODELS``).
+MODEL_KEYS = ("llava-1.5-7b", "qwen2-vl-7b", "qwen2-vl-2b")
 TASKS = ("okvqa", "textvqa")
 SEARCH_ROWS = 128
 DEV_ROWS = 256
@@ -395,7 +398,7 @@ class HFVQARegionRuntime:
                 for key, value in values.items()}
 
     def _position_kwargs(self, inputs):
-        if self.model_key != "qwen2-vl-7b":
+        if not self.model_key.startswith("qwen2-vl"):
             return {}
         position_ids, rope_deltas = self.model.get_rope_index(
             inputs["input_ids"], inputs.get("image_grid_thw"),
