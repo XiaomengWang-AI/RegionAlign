@@ -292,6 +292,9 @@ def search(ctx):
     base = ctx.nll()
     state = {"g": ctx.grad(), "act": ctx.profile()}
     groups = groups_of(ctx, W, state, base)
+    if REFRESH_GRAD:
+        state["g"] = None            # unused once the candidate tables exist; refresh
+                                     # re-measures the gradient, so free the region tensor
     if ctx.arm == "local":
         survivors = groups                           # seeded by the free reach surrogate; only
         for count, until, share in HALVING:          # the kept survivors are ever measured exactly
