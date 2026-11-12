@@ -782,7 +782,7 @@ class BaseRuntime:
         """Per-row teacher-forced NLL of the majority answer plus EOS (nan if non-finite)."""
         import torch
         out = []
-        with torch.no_grad():
+        with torch.inference_mode():
             for start in range(0, len(rows), bs):
                 out.extend(float(v) for v in self._nll_batch(rows[start:start + bs]))
         return out
@@ -813,7 +813,7 @@ class BaseRuntime:
         for start in range(0, len(rows), bs):
             batch = rows[start:start + bs]
             try:
-                with torch.no_grad():
+                with torch.inference_mode():
                     x, mask = self._pad([self.seq_embeds(r)[0] for r in batch], left=True)
                     position = (mask.cumsum(-1) - 1).clamp_min(0)
                     out = self.lm.model(inputs_embeds=x, attention_mask=mask,
@@ -872,7 +872,7 @@ class BaseRuntime:
 
     def prefill_logits(self, rows):
         import torch
-        with torch.no_grad():
+        with torch.inference_mode():
             x, mask = self._pad([self.seq_embeds(r)[0] for r in rows], left=True)
             position = (mask.cumsum(-1) - 1).clamp_min(0)
             hidden = self.lm.model(inputs_embeds=x, attention_mask=mask, position_ids=position,

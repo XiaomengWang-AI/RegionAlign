@@ -54,7 +54,7 @@ class MatrixTextRuntime(P.BaseRuntime):
         """Exact MMLU-style label accuracy without generation."""
         correct = 0
         for row in rows:
-            with torch.no_grad():
+            with torch.inference_mode():
                 logits = self.prefill_logits([row])[0]
             choice = torch.as_tensor(row["choice_token_ids"], device=logits.device)
             prediction = int(logits[choice].argmax().item())

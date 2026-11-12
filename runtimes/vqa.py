@@ -432,7 +432,7 @@ class HFVQARegionRuntime:
         """Per-row answer-token NLL; ``bs`` is accepted for the RegionContext API."""
         import torch
         del bs
-        with torch.no_grad():
+        with torch.inference_mode():
             return [float(self._loss(row)) for row in rows]
 
     def grads(self, names, rows, bs=1):
@@ -457,7 +457,7 @@ class HFVQARegionRuntime:
         """Last prompt-token logits for the function-preservation clean gate."""
         import torch
         result = []
-        with torch.no_grad():
+        with torch.inference_mode():
             for row in rows:
                 inputs = self._to_device(self._prompt(row))
                 inputs.update(self._position_kwargs(inputs))
