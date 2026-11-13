@@ -13,7 +13,7 @@ from transformers import LlamaConfig, LlamaForCausalLM
 
 from regionalign.harness import core as P
 from regionalign.tests.helpers import (TINY_GROUP, TinyRuntime, grouped_perm, random_spec,
-                                       tiny_gqa_lm, tiny_lm, tiny_runtime)
+                                       tiny_gqa_lm, tiny_layernorm_lm, tiny_lm, tiny_runtime)
 
 
 class BitTests(unittest.TestCase):
@@ -195,6 +195,52 @@ class PermutationTests(unittest.TestCase):
         P.apply_permutation(rt, spec)
         torch.testing.assert_close(lm(ids).logits, reference, atol=1e-5, rtol=1e-5)
         P.apply_permutation(rt, spec, inverse=True)
+
+    def test_layernorm_decoder_keeps_function_codes_and_scales(self):
+        # StableLM-style decoders normalise with LayerNorm, a gain and a bias per
+        # residual coordinate, carry q/k/v biases and rotate only part of each
+        # head.  Every bias must follow the axis that moves its weight; partial
+        # RoPE is unaffected because query/key dimensions never move inside a head.
+        for kv_heads in (4, 2):
+            for fmt in QUANTIZED:
+                with self.subTest(kv_heads=kv_heads, fmt=fmt):
+                    lm = tiny_layernorm_lm(torch.float32, kv_heads=kv_heads)
+                    P.quantize(lm, fmt, group=TINY_GROUP)
+                    rt, d, rng = TinyRuntime(lm, []), P.dims(lm), random.Random(11)
+                    hd, q = d["head_dim"], d.get("query_group_size", 1)
+                    blocks = rng.sample(range(d["heads"] // q), d["heads"] // q)
+                    heads = [b * q + i for b in blocks for i in rng.sample(range(q), q)]
+                    local = [rng.sample(range(hd), hd) for _ in range(d["heads"] // q)]
+                    vo = [h * hd + i for h in range(d["heads"]) for i in local[h // q]]
+                    spec = P.validate_spec({
+                        "residual": grouped_perm(d["hidden"], TINY_GROUP, rng),
+                        "mlp": {"1": grouped_perm(d["mlp"], TINY_GROUP, rng)},
+                        "heads": {"0": heads}, "vo": {"0": vo, "1": vo}}, d)
+                    orders = P.parameter_axis_orders(lm, spec, d)
+                    for name in ("model.norm.bias", "model.layers.1.input_layernorm.bias",
+                                 "model.layers.1.post_attention_layernorm.bias",
+                                 "model.layers.0.self_attn.q_proj.bias",
+                                 "model.layers.0.self_attn.v_proj.bias"):
+                        self.assertIn((name, 0), orders)
+                    ids = torch.randint(0, 64, (2, 11))
+                    reference = lm(ids).logits
+                    weights = {n: p.data.clone() for n, p in lm.named_parameters()}
+                    codes = {n: P.int_codes(lm, n, torch.arange(p.numel())).view(p.shape)
+                             for n, p in lm.named_parameters()}
+                    scales = {n: s.clone() for n, s in lm.ar_quant["scales"].items()}
+                    P.apply_permutation(rt, spec)
+                    torch.testing.assert_close(lm(ids).logits, reference, atol=1e-5, rtol=1e-5)
+                    expected = dict(codes)
+                    for (name, axis), order in orders.items():
+                        expected[name] = expected[name].index_select(axis, torch.tensor(order))
+                    for name, param in lm.named_parameters():
+                        actual = P.int_codes(lm, name, torch.arange(param.numel())).view(param.shape)
+                        self.assertTrue(torch.equal(actual, expected[name]), name)
+                    P.apply_permutation(rt, spec, inverse=True)
+                    for name, param in lm.named_parameters():
+                        self.assertTrue(torch.equal(weights[name], param.data), name)
+                    for name, s in lm.ar_quant["scales"].items():
+                        self.assertTrue(torch.equal(scales[name], s), name)
 
     def test_tied_embedding_and_lm_head_are_permuted_once(self):
         torch.manual_seed(17)

@@ -105,6 +105,50 @@ class RegionAlignConfigTests(unittest.TestCase):
             self.assertEqual(input_audit.cache_root(SimpleNamespace(hf_home=None)), configured)
             self.assertEqual(input_audit.cache_root(SimpleNamespace(hf_home=str(explicit))), explicit)
 
+    def test_download_covers_the_llm_registry_and_checks_the_snapshot(self):
+        import io
+        import types
+        from contextlib import redirect_stdout
+        from regionalign.experiments import input_audit
+        registry = input_audit.M.MODEL_SPECS
+        models = input_audit.downloadable_models()
+        self.assertEqual(set(models), set(input_audit.MODELS) | set(registry))
+        for key in set(input_audit.MODELS) & set(registry):
+            self.assertEqual(models[key]["repository"], registry[key]["repository"], key)
+        conflicting = dict(registry)
+        key = next(iter(set(input_audit.MODELS) & set(registry)))
+        conflicting[key] = dict(registry[key], repository="other/checkpoint")
+        with patch.object(input_audit.M, "MODEL_SPECS", conflicting), \
+                self.assertRaisesRegex(ValueError, "different checkpoints"):
+            input_audit.downloadable_models()
+
+        key = next(name for name in registry if name not in input_audit.MODELS)
+        args = input_audit.parser().parse_args(
+            ["download", "--model", key, "--revision", "abc123", "--hf-home", str(self.project)])
+        snapshot = self.project / "hub" / registry[key]["cache_component"] / "snapshots" / "abc123"
+        calls = []
+
+        def snapshot_download(repository, **options):
+            calls.append((repository, options))
+            return str(snapshot)
+        hub = types.ModuleType("huggingface_hub")
+        hub.snapshot_download = snapshot_download
+        output = io.StringIO()
+        with patch.dict(sys.modules, {"huggingface_hub": hub}), \
+                patch.object(input_audit.M, "checkpoint_manifest",
+                             return_value={"revision": "abc123", "manifest_sha256": "f" * 64}) as check, \
+                redirect_stdout(output):
+            input_audit.download(args)
+        self.assertEqual(calls, [(registry[key]["repository"],
+                                  {"revision": "abc123", "cache_dir": str(self.project / "hub"),
+                                   "resume_download": True})])
+        check.assert_called_once_with(str(snapshot), key)
+        self.assertIn('"revision": "abc123"', output.getvalue())
+
+        with self.assertRaises(SystemExit), redirect_stdout(io.StringIO()), \
+                patch("sys.stderr", io.StringIO()):
+            input_audit.parser().parse_args(["download", "--model", "unregistered"])
+
     def test_environment_is_offline_and_stays_inside_the_package(self):
         replacement = self.project / "cache"
         before = list(sys.path)

@@ -35,9 +35,10 @@ class RegionRegistrationTests(unittest.TestCase):
                 with self.subTest(models=models), self.assertRaisesRegex(ValueError, "registered"):
                     S.make_plan(Path(temporary) / "run", models, temporary, "train", "validation")
 
-    def test_registered_small_models_have_legal_regions_in_every_band_and_kind(self):
-        for key in ("llama3.2-1b", "qwen2.5-1.5b"):
-            spec = S.M.MODEL_SPECS[key]
+    def test_every_registered_model_has_legal_regions_in_every_band_and_kind(self):
+        self.assertLessEqual({"llama3.2-1b", "qwen2.5-1.5b", "stablelm2-1.6b", "smollm2-1.7b"},
+                             set(S.MODELS))
+        for key, spec in S.M.MODEL_SPECS.items():
             for fmt, bits in (("int8", 8), ("int4", 4)):
                 with self.subTest(model=key, format=fmt):
                     dims = S.dims_for_format(dict(spec), fmt)

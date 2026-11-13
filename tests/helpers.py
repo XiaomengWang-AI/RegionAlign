@@ -39,6 +39,21 @@ def tiny_gqa_lm(dtype=torch.float32, seed=0, kv_heads=2, attention_bias=False):
     return lm
 
 
+def tiny_layernorm_lm(dtype=torch.float32, seed=0, kv_heads=4):
+    """Tiny StableLM-shaped decoder: LayerNorm gains and biases, q/k/v biases, partial RoPE."""
+    from transformers import StableLmConfig, StableLmForCausalLM
+    torch.manual_seed(seed)
+    config = StableLmConfig(vocab_size=64, hidden_size=64, intermediate_size=128, num_hidden_layers=2,
+                            num_attention_heads=4, num_key_value_heads=kv_heads,
+                            max_position_embeddings=128, partial_rotary_factor=0.25,
+                            use_qkv_bias=True, tie_word_embeddings=False)
+    lm = StableLmForCausalLM(config).to(dtype).eval().requires_grad_(False)
+    for p in lm.parameters():             # random gains and biases so their permutation matters
+        if p.dim() == 1:
+            p.data.uniform_(0.5, 1.5)
+    return lm
+
+
 TINY_GROUP = 16      # int4 group in tests: the tiny model's head_dim, so heads move whole groups
 
 

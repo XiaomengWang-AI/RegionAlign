@@ -8,6 +8,9 @@ a runtime written for one VQA model cannot be silently reused for another.
 
 The ``audit`` command is offline and write-once.  ``download`` is an explicit
 opt-in helper for missing public inputs and is never called by ``audit``.
+Besides the audit table it accepts every checkpoint of the formal LLM registry
+(``clean_mmlu.MODEL_SPECS``), so a newly registered model needs no second entry
+here, and it checks such a download against that registry before reporting it.
 """
 from __future__ import annotations
 
@@ -20,6 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from regionalign import config as C
+from regionalign.experiments import clean_mmlu as M
 
 SCHEMA = 1
 
@@ -211,18 +215,39 @@ def audit(args):
                      sort_keys=True))
 
 
+def downloadable_models():
+    """Model keys ``download`` accepts, each with its Hub repository and cache directory name.
+
+    A key in both tables must name the same checkpoint in both.
+    """
+    models = {}
+    for table in (MODELS, M.MODEL_SPECS):
+        for key, spec in table.items():
+            entry = {"repository": spec["repository"], "cache_component": spec["cache_component"]}
+            if models.setdefault(key, entry) != entry:
+                raise ValueError(f"{key} names different checkpoints in the audit and LLM registries")
+    return models
+
+
 def download(args):
     """Download only an explicitly named missing public input."""
     hf_home = cache_root(args)
     if args.model:
         from huggingface_hub import snapshot_download
-        spec = MODELS[args.model]
-        path = snapshot_download(spec["repository"], cache_dir=str(hf_home / "hub"), resume_download=True)
+        spec = downloadable_models()[args.model]
+        path = snapshot_download(spec["repository"], revision=args.revision,
+                                 cache_dir=str(hf_home / "hub"), resume_download=True)
         print(path)
+        if args.model in M.MODEL_SPECS:
+            # Fail now, not at plan time, if the snapshot is not the registered architecture.
+            manifest = M.checkpoint_manifest(path, args.model)
+            print(json.dumps({"model_key": args.model, "revision": manifest["revision"],
+                              "manifest_sha256": manifest["manifest_sha256"]}, sort_keys=True))
         return
     from datasets import load_dataset
     spec = DATASETS[args.dataset]
-    dataset = load_dataset(spec["repository"], cache_dir=str(hf_home / "datasets"))
+    dataset = load_dataset(spec["repository"], revision=args.revision,
+                           cache_dir=str(hf_home / "datasets"))
     print(dataset)
 
 
@@ -235,8 +260,9 @@ def parser():
     a.set_defaults(function=audit)
     d = sub.add_parser("download")
     group = d.add_mutually_exclusive_group(required=True)
-    group.add_argument("--model", choices=sorted(MODELS))
+    group.add_argument("--model", choices=sorted(downloadable_models()))
     group.add_argument("--dataset", choices=sorted(DATASETS))
+    d.add_argument("--revision", help="Hub commit, branch or tag to fetch (default: main)")
     d.add_argument("--hf-home")
     d.set_defaults(function=download)
     return root

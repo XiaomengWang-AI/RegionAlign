@@ -19,7 +19,7 @@
 | `runtimes/text.py` | MMLU/WikiText 冻结 token 面板及正式文本目标 |
 | `runtimes/vqa.py` | LLaVA/Qwen2-VL 的训练集面板、多模态计算及评分适配 |
 | `runtimes/vqa_score.py` | 官方 VQA 答案归一化与一致性准确率 |
-| `experiments/llm.py` | Llama-2、Llama-3.1、Qwen2.5 的正式开发集匹配矩阵 |
+| `experiments/llm.py` | 已登记 LLM（计划可取任意非空子集）的正式开发集匹配矩阵 |
 | `experiments/vqa.py` | LLaVA/Qwen2-VL 的正式开发集匹配矩阵及 GPU preflight |
 | `experiments/official_okvqa.py` | 官方训练来源的独立归档、面板选择审计与四条件 parent |
 | `experiments/clean_mmlu.py` | 无故障 MMLU 量化基线、模型加载及输入/源码审计 |
@@ -38,12 +38,12 @@
 | `experiments/campaign_evaluation.py` | 全部开发产物封存后的最终与跨任务独立评价 |
 | `experiments/task_transfer.py` | 两份独立 VQA 开发计划之间的双向任务迁移评价 |
 | `experiments/checkpoint_transfer.py` | 同架构 checkpoint 之间的独立迁移评价 |
-| `experiments/input_audit.py` | 模型/数据缓存审计及显式输入下载 |
+| `experiments/input_audit.py` | 模型/数据缓存审计及显式输入下载（含全部已登记 LLM，可固定 Hub 版本） |
 | `reporting/mmlu.py` | 完整 clean MMLU 结果的表格、图与校验 |
 | `reporting/clean_matrix.py` | 已有 clean 矩阵汇总；不代替正式 RegionAlign 的状态检查 |
 | `reporting/campaign_costs.py` | 冻结注册矩阵的搜索成本、开发损伤、匹配对照与覆盖汇总 |
 | `tests/helpers.py` | 测试共用的小型随机模型与 Runtime 夹具 |
-| `tests/test_core.py` | 内核测试：翻位可逆、置换保函数与保码、量化完整、in-range 规则 |
+| `tests/test_core.py` | 内核测试：翻位可逆、置换保函数与保码（含 LayerNorm 解码器）、量化完整、in-range 规则 |
 | `tests/test_region_core.py` | 通用区域、合法置换、算法接口与包自包含性测试 |
 | `tests/test_llm_region_study.py` | 正式文本矩阵、匹配重复、隔离与源码快照测试 |
 | `tests/test_vqa_region_study.py` | 正式 VQA 矩阵、输入身份与评价规则测试 |
@@ -65,7 +65,7 @@
 | `tests/test_campaign_followups.py` | 真实小型量化运行时的跨任务独立评价测试 |
 | `tests/test_campaign_costs.py` | 搜索成本核算、缺失覆盖与匹配对照隔离测试 |
 | `tests/test_wikitext_clean_dev.py` | 开发集文本隔离与 token 加权测试 |
-| `tests/test_config.py` | 输出边界、离线环境及拒绝覆盖测试 |
+| `tests/test_config.py` | 输出边界、离线环境、拒绝覆盖及下载范围测试 |
 | `results/` | 分离前产生的结果、运行计划、日志与迁移审计；只新增，不进版本库 |
 | `.claude/review-loop/` | Codex 只读交叉审查脚本 |
 
