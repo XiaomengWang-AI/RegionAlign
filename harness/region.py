@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import math
 import random
+from contextlib import nullcontext
 
 from . import core as P
 
@@ -397,9 +398,19 @@ class RegionContext:
     permuting and then flipping its image, so the search needs no deployed model.
     The final layout and flips are validated in deployed coordinates by
     ``check``, which is the evaluator's own rule.
+
+    Two reuses make these measurements cheaper without changing a value
+    (``reuse=False`` turns both off; ``self.reuse`` reports what applied).  At
+    batch size one, repeated rows of the bootstrap panel are evaluated once
+    (``core.mean_nll``).  And because every flip stays inside the region tensor,
+    no layer before the region's layer ever changes, so one-row passes start at
+    that layer from states recorded on the clean model (``prefix_states``,
+    checked bit for bit before use).  Budget charges are unchanged, and ``check``
+    always runs full passes.
     """
 
-    def __init__(self, rt, region, arm, seed, budget=BUDGET, log=print, bs=8, grad_bs=4):
+    def __init__(self, rt, region, arm, seed, budget=BUDGET, log=print, bs=8, grad_bs=4,
+                 reuse=True):
         if arm not in ARMS:
             raise ValueError(f"unknown arm {arm!r}")
         self.rt, self.region, self.arm, self.seed, self.log = rt, region, arm, seed, log
@@ -416,6 +427,37 @@ class RegionContext:
         self.budget, self.spent, self.bs, self.grad_bs = budget, 0, bs, grad_bs
         self.forced_row = random_row(region, self.d, seed) if arm == "random" else None
         self.calls = {"eval": 0, "grad": 0}
+        self._reuse_allowed, self.reuse = reuse, None
+        self._distinct = self._prefix = None
+
+    # -- exact reuse, prepared once before the first measurement
+    def _prepare_reuse(self):
+        if self.reuse is not None:
+            return
+        rows, n = self.rows, len(self.rows)
+        groups = P.distinct_rows(rows) if self._reuse_allowed else None
+        first, expand = groups or (list(range(n)), list(range(n)))
+        if groups is not None and self.bs == 1 and len(first) < n:
+            self._distinct = groups
+        layer, status = self.region.get("layer"), "off"
+        if (self._reuse_allowed and 1 in (self.bs, self.grad_bs)
+                and hasattr(self.rt, "prefix_states") and isinstance(layer, int)
+                and self.name.startswith(f"model.layers.{layer}.")):
+            prefix, status = self.rt.prefix_states([rows[i] for i in first], layer)
+            if prefix is not None:
+                for index, position in enumerate(expand):
+                    prefix["states"][id(rows[index])] = prefix["states"][id(rows[first[position]])]
+                self._prefix = prefix
+            elif status == "mismatch":
+                self.log(f"{self.region.get('id')}: reused layer-{layer} states differ from "
+                         "full passes; this search runs full passes")
+        self.reuse = {"rows": n, "distinct_rows": len(first),
+                      "evaluated_rows": len(first) if self._distinct else n,
+                      "prefix_layer": layer if self._prefix is not None else None,
+                      "prefix": status}
+
+    def _reusing(self, bs):
+        return self.rt.reusing(self._prefix) if self._prefix is not None and bs == 1 else nullcontext()
 
     # -- compute, charged against the budget
     def remaining(self):
@@ -446,20 +488,24 @@ class RegionContext:
     def nll(self, flips=()):
         """Mean search-panel NLL with ``flips`` (original coordinates) applied."""
         flips = self._flips(flips)
+        self._prepare_reuse()
         self._charge("eval")
         P.apply_flips(self.rt.lm, flips)
         try:
-            return P.mean_nll(self.rt, self.rows, bs=self.bs)
+            with self._reusing(self.bs):
+                return P.mean_nll(self.rt, self.rows, bs=self.bs, distinct=self._distinct)
         finally:
             P.apply_flips(self.rt.lm, flips)
 
     def grad(self, flips=()):
         """Gradient of the mean search-panel NLL w.r.t. the region tensor (float32)."""
         flips = self._flips(flips)
+        self._prepare_reuse()
         self._charge("grad")
         P.apply_flips(self.rt.lm, flips)
         try:
-            return self.rt.grads([self.name], self.rows, bs=self.grad_bs)[self.name].float()
+            with self._reusing(self.grad_bs):
+                return self.rt.grads([self.name], self.rows, bs=self.grad_bs)[self.name].float()
         finally:
             P.apply_flips(self.rt.lm, flips)
 
@@ -469,17 +515,21 @@ class RegionContext:
         with ``flips`` (original coordinates) applied -- the faulted model's activations."""
         import torch
         flips = self._flips(flips)
+        self._prepare_reuse()
         self._charge("eval")
         module = self.rt.lm.get_submodule(self.name[:-len(".weight")])
         stats = []
 
         def hook(_, args):
             stats.append(args[0].detach().abs().float().amax(dim=(0, 1)))
+        # A maximum is unchanged by repeated rows, so each distinct row is passed once.
+        rows = self.rows if self._distinct is None else [self.rows[i] for i in self._distinct[0]]
         P.apply_flips(self.rt.lm, flips)
         try:
             handle = module.register_forward_pre_hook(hook)
             try:
-                self.rt.nll(self.rows, bs=self.bs)
+                with self._reusing(self.bs):
+                    self.rt.nll(rows, bs=self.bs)
             finally:
                 handle.remove()
         finally:

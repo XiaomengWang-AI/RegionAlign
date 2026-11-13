@@ -7,6 +7,7 @@ import random
 import subprocess
 import sys
 import unittest
+from unittest import mock
 
 import torch
 
@@ -18,8 +19,9 @@ from regionalign.algorithm import search as S
 from regionalign.harness import core as P
 from regionalign.harness import region as R
 from regionalign.harness import evidence as E
-from regionalign.tests.helpers import (TINY_GROUP, TinyRuntime, tiny_gqa_lm, tiny_lm,
-                                       tiny_text_runtime)
+from regionalign.runtimes.text import FormalTextRuntime
+from regionalign.tests.helpers import (TINY_GROUP, StubTokenizer, TinyRuntime, tiny_gqa_lm,
+                                       tiny_layernorm_lm, tiny_lm, tiny_text_runtime)
 
 PAGE = 64
 
@@ -302,6 +304,122 @@ class RandomBaselineCandidateTests(unittest.TestCase):
         orders = P.axis_orders(spec, d)
         self.assertIn((ctx.name, 0), orders)
         self.assertIn((ctx.name, 1), orders)
+
+
+def text_runtime(lm, n=4):
+    """A weighted text runtime on ``lm`` whose rows carry frozen prompt and answer ids."""
+    tok = StubTokenizer()
+    rows = []
+    for i in range(n):
+        ids = tok(f"what is object {i} made of").input_ids[0].tolist()
+        rows.append({"sid": f"s{i}", "prompt_ids": ids[:-2], "answer_ids": ids[-2:],
+                     "target_tokens": 2, "objective_weight": 0.5 + i / n})
+    return FormalTextRuntime(lm, tok, {"search": rows, "dev": rows}, "cpu")
+
+
+def with_repeats(rows, seed=3, extra=3):
+    """A with-replacement draw, like the bootstrap search panels of the experiments."""
+    rng = random.Random(seed)
+    return [dict(rows[rng.randrange(len(rows))]) for _ in range(len(rows) + extra)]
+
+
+class ExactReuseTests(unittest.TestCase):
+    """Reused search measurements must equal full passes bit for bit."""
+
+    def test_repeated_rows_are_evaluated_once_without_changing_the_mean(self):
+        rt = tiny_text_runtime(fmt="int8", n=4)
+        rows = with_repeats(rt.rows["search"])
+        first, expand = P.distinct_rows(rows)
+        self.assertLess(len(first), len(rows))
+        self.assertEqual([json.dumps(rows[first[j]], sort_keys=True) for j in expand],
+                         [json.dumps(row, sort_keys=True) for row in rows])
+        plain = P.mean_nll(rt, rows, bs=1)
+        original, calls = rt.nll, []
+
+        def counting(batch, bs=4):
+            calls.append(len(batch))
+            return original(batch, bs=bs)
+        with mock.patch.object(rt, "nll", side_effect=counting):
+            reused = P.mean_nll(rt, rows, bs=1, distinct=(first, expand))
+        self.assertEqual(calls, [len(first)])
+        self.assertEqual(reused, plain)
+        with self.assertRaises(ValueError):
+            P.mean_nll(rt, rows, bs=2, distinct=(first, expand))
+        self.assertIsNone(P.distinct_rows([{"features": torch.zeros(2)}]))
+
+    def test_prefix_states_reproduce_full_passes_for_each_decoder_family(self):
+        families = {"llama": tiny_lm(torch.bfloat16),
+                    "gqa_with_bias": tiny_gqa_lm(torch.bfloat16, attention_bias=True),
+                    "layernorm": tiny_layernorm_lm(torch.bfloat16)}
+        name = "model.layers.1.mlp.gate_proj.weight"
+        flips = [[name, 5, 7], [name, 77, 6], [name, 130, 3]]
+        for family, lm in families.items():
+            with self.subTest(family=family):
+                P.quantize(lm, "int8")
+                rt = text_runtime(lm)
+                rows = rt.rows["search"]
+                self.assertEqual(rt.prefix_states(rows, 0), (None, "unavailable"))
+                prefix, status = rt.prefix_states(rows, 1)
+                self.assertEqual(status, "verified")
+                P.apply_flips(rt.lm, flips)
+                try:
+                    full = rt.nll(rows, bs=1)
+                    full_grad = rt.grads([name], rows, bs=1)[name].clone()
+                    with rt.reusing(prefix):
+                        reused = rt.nll(rows, bs=1)
+                        reused_grad = rt.grads([name], rows, bs=1)[name].clone()
+                finally:
+                    P.apply_flips(rt.lm, flips)
+                self.assertEqual(full, reused)
+                self.assertTrue(torch.equal(full_grad, reused_grad))
+                self.assertIsNone(rt._prefix)
+
+    def test_reused_searches_equal_full_searches(self):
+        rt = tiny_text_runtime(fmt="int8", n=4)
+        rt.rows["search"] = with_repeats(rt.rows["search"])
+        for kind, layer, arm in (("gate_proj", 1, "local"), ("q_proj", 1, "random"),
+                                 ("down_proj", 0, "local"), ("v_proj", 1, "noperm")):
+            with self.subTest(kind=kind, layer=layer, arm=arm):
+                reg = region(rt, kind, layer=layer)
+                outcomes = []
+                for reuse in (True, False):
+                    ctx = R.RegionContext(rt, reg, arm, 7, budget=40, bs=1, grad_bs=1,
+                                          log=lambda *a: None, reuse=reuse)
+                    result = json.dumps(S.search(ctx), sort_keys=True)
+                    outcomes.append(((result, ctx.calls, ctx.spent), ctx.reuse))
+                self.assertEqual(outcomes[0][0], outcomes[1][0])
+                used, plain = outcomes[0][1], outcomes[1][1]
+                self.assertEqual(used["prefix"], "verified" if layer else "unavailable")
+                self.assertLess(used["evaluated_rows"], used["rows"])
+                self.assertEqual((plain["prefix"], plain["evaluated_rows"]), ("off", plain["rows"]))
+
+    def test_a_failed_state_check_falls_back_and_check_never_reuses(self):
+        rt = tiny_text_runtime(fmt="int8", n=4)
+        rt.rows["search"] = with_repeats(rt.rows["search"])
+        reg = region(rt, "gate_proj")
+        logged = []
+        with mock.patch.object(rt, "prefix_states", return_value=(None, "mismatch")):
+            ctx = R.RegionContext(rt, reg, "local", 7, budget=20, bs=1, grad_bs=1,
+                                  log=logged.append)
+            reference = R.RegionContext(rt, reg, "local", 7, budget=20, bs=1, grad_bs=1,
+                                        reuse=False)
+            self.assertEqual(ctx.nll(), reference.nll())
+        self.assertEqual((ctx.reuse["prefix"], ctx.reuse["prefix_layer"]), ("mismatch", None))
+        self.assertTrue(any("full passes" in line for line in logged))
+
+        ctx = R.RegionContext(rt, reg, "local", 7, budget=20, bs=1, grad_bs=1,
+                              log=lambda *a: None)
+        ctx.nll()
+        self.assertEqual(ctx.reuse["prefix"], "verified")
+        seen, original = [], R.check_region_attack
+
+        def spy(*args, **kwargs):
+            seen.append(rt._prefix)
+            return original(*args, **kwargs)
+        d = P.dims(rt.lm)
+        with mock.patch.object(R, "check_region_attack", side_effect=spy):
+            ctx.check(R.placement(reg, d, R.reachable_rows(reg, d)[0]), {1: []})
+        self.assertEqual(seen, [None])
 
 
 class EvidenceAndIsolationTests(unittest.TestCase):

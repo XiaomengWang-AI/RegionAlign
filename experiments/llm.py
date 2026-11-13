@@ -710,7 +710,7 @@ def run_search(run, condition_id, shard="0/1", device="cuda:0",
                     "plan_sha256": plan["sha256"], "quantization": audit,
                     "quantization_schema_version": audit.get("schema_version"),
                     "execution_protocol": execution,
-                    "spent": ctx.spent, "calls": dict(ctx.calls),
+                    "spent": ctx.spent, "calls": dict(ctx.calls), "search_reuse": ctx.reuse,
                     "search_rows": len(bootstrap_rows), "search_target_tokens": sum(
                         row["target_tokens"] for row in bootstrap_rows),
                     "seconds": time.monotonic() - started, "load_timings": load_timings,

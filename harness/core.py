@@ -27,8 +27,10 @@ Conventions
 """
 from __future__ import annotations
 
+import json
 import math
 from collections import defaultdict
+from contextlib import contextmanager
 
 
 # ---------------------------------------------------------------- constants
@@ -714,12 +716,49 @@ def check_attack(rt, flips, k):
 
 
 # ---------------------------------------------------------------- loss
-def mean_nll(rt, rows, bs=4):
-    """Mean teacher-forced NLL over ``rows``; nan as soon as one row is not finite."""
+def distinct_rows(rows):
+    """``(first, expand)``: the first position of each distinct row and every row's index
+    into ``first``, or None when a row is not plain JSON data.
+
+    Rows are distinct by content, so the repeats of a with-replacement bootstrap
+    panel collapse onto one row.
+    """
+    first, expand, seen = [], [], {}
+    for index, row in enumerate(rows):
+        try:
+            key = json.dumps(row, sort_keys=True, allow_nan=False)
+        except (TypeError, ValueError):
+            return None
+        position = seen.setdefault(key, len(first))
+        if position == len(first):
+            first.append(index)
+        expand.append(position)
+    return first, expand
+
+
+def mean_nll(rt, rows, bs=4, distinct=None):
+    """Mean teacher-forced NLL over ``rows``; nan as soon as one row is not finite.
+
+    With ``distinct`` (from ``distinct_rows``; batch size one only) each distinct row
+    is evaluated once and its value is reused at every repeat.  A row's value does not
+    depend on the other rows at batch size one, and the sum keeps the original row
+    order, so the mean is bit-identical to evaluating every row.
+    """
     if not rows:
         return 0.0
-    values = rt.nll(rows, bs=bs)
+    if distinct is None:
+        values = rt.nll(rows, bs=bs)
+    else:
+        if bs != 1:
+            raise ValueError("distinct-row reuse requires batch size one")
+        first, expand = distinct
+        unique = rt.nll([rows[i] for i in first], bs=1)
+        values = [unique[i] for i in expand]
     return sum(values) / len(values) if all(math.isfinite(v) for v in values) else float("nan")
+
+
+class _StopForward(Exception):
+    """Ends a capture pass once the residual stream at the cut layer is recorded."""
 
 
 # ---------------------------------------------------------------- runtime
@@ -733,6 +772,7 @@ class BaseRuntime:
     residual = None
     task = "vqa"
     max_new_tokens = MAX_NEW_TOKENS
+    _prefix = None              # the reuse ``reusing`` activates; see ``prefix_states``
 
     def param(self, name):
         return self.lm.get_parameter(name)
@@ -757,9 +797,8 @@ class BaseRuntime:
         """
         return None
 
-    def _nll_batch(self, rows):
-        import torch
-        import torch.nn.functional as F
+    def _batch(self, rows):
+        """Right-padded input embeddings, mask and per-row answer spans of ``rows``."""
         seqs, spans = [], []
         for row in rows:
             answer = self.answer_ids(row)
@@ -767,7 +806,89 @@ class BaseRuntime:
             seqs.append(embeds)
             spans.append((n_ctx, answer.to(self.device), self.token_weights(row, len(answer))))
         x, mask = self._pad(seqs, left=False)
-        hidden = self.lm.model(inputs_embeds=x, attention_mask=mask, use_cache=False)[0]
+        return x, mask, spans
+
+    def _hidden(self, rows, x, mask):
+        """Final decoder states; one row with an active prefix state starts at its layer."""
+        prefix = self._prefix
+        state = (prefix["states"].get(id(rows[0]))
+                 if prefix is not None and len(rows) == 1 else None)
+        if state is None:
+            return self.lm.model(inputs_embeds=x, attention_mask=mask, use_cache=False)[0]
+        if state.shape != x.shape or state.dtype != x.dtype:
+            raise RuntimeError("a reused prefix state does not match its row")
+        model = self.lm.model
+        layers = model.layers
+        model.layers = layers[prefix["layer"]:]
+        try:
+            return model(inputs_embeds=state, attention_mask=mask, use_cache=False)[0]
+        finally:
+            model.layers = layers
+
+    def prefix_states(self, rows, layer):
+        """Record the residual stream entering decoder layer ``layer`` for single-row passes.
+
+        A fault confined to layer ``layer`` or later leaves every earlier layer's output
+        unchanged, so a one-row pass may start at ``layer`` from the recorded state and
+        run the same kernels on the same inputs as the full pass.  The states are
+        recorded once on the current model; they are accepted only if every row's reused
+        NLL equals its full-pass NLL bit for bit.  They stay valid only while the
+        parameters before ``layer`` and the row objects are unchanged.
+
+        Returns ``(prefix, status)``: ``prefix`` maps ``id(row)`` to its state under
+        ``"states"`` (activate it with ``reusing``), or is None when ``status`` is
+        ``"unavailable"`` (layer 0 or no decoder stack: nothing to save) or
+        ``"mismatch"``.
+        """
+        import torch
+        layers = getattr(getattr(self.lm, "model", None), "layers", None)
+        if layers is None or not 0 < layer < len(layers):
+            return None, "unavailable"
+        recorded = []
+
+        def capture(module, args, kwargs):
+            hidden = args[0] if args else kwargs["hidden_states"]
+            recorded.append(hidden.detach().clone())
+            raise _StopForward
+
+        states = {}
+        with torch.no_grad():
+            handle = layers[layer].register_forward_pre_hook(capture, with_kwargs=True)
+            try:
+                for row in rows:
+                    x, mask, _ = self._batch([row])
+                    try:
+                        self.lm.model(inputs_embeds=x, attention_mask=mask, use_cache=False)
+                    except _StopForward:
+                        pass
+                    if len(recorded) != 1:
+                        return None, "unavailable"
+                    states[id(row)] = recorded.pop()
+            finally:
+                handle.remove()
+            prefix = {"layer": layer, "states": states}
+            for row in rows:
+                full = self._nll_batch([row])
+                with self.reusing(prefix):
+                    reused = self._nll_batch([row])
+                if not torch.equal(full, reused):
+                    return None, "mismatch"
+        return prefix, "verified"
+
+    @contextmanager
+    def reusing(self, prefix):
+        """Let one-row passes over the rows of ``prefix`` start at its layer."""
+        previous, self._prefix = self._prefix, prefix
+        try:
+            yield
+        finally:
+            self._prefix = previous
+
+    def _nll_batch(self, rows):
+        import torch
+        import torch.nn.functional as F
+        x, mask, spans = self._batch(rows)
+        hidden = self._hidden(rows, x, mask)
         losses = []
         for i, (n, a, w) in enumerate(spans):
             logits = self.lm.lm_head(hidden[i, n - 1:n - 1 + len(a)]).float()

@@ -12,8 +12,8 @@
 | `config.py` | 本包自有的路径、离线环境设置和只新增的结果路径 |
 | `runtime.json` | 本机配置：`hf_home` 指向模型与数据缓存 |
 | `requirements.txt` | 本包直接依赖及实验所用版本 |
-| `harness/core.py` | 自包含内核：权重量化、合法置换、翻位与 in-range 校验、基础 Runtime |
-| `harness/region.py` | 通用区域几何、合法布局、区域校验与计算预算上下文 |
+| `harness/core.py` | 自包含内核：权重量化、合法置换、翻位与 in-range 校验、基础 Runtime 及逐位不变的前向复用 |
+| `harness/region.py` | 通用区域几何、合法布局、区域校验与计算预算上下文（含重复行与层前缀复用） |
 | `harness/evidence.py` | JSON 数值清理等证据辅助函数 |
 | `algorithm/search.py` | 正式区域实验共用的搜索算法 |
 | `runtimes/text.py` | MMLU/WikiText 冻结 token 面板及正式文本目标 |
@@ -44,7 +44,7 @@
 | `reporting/campaign_costs.py` | 冻结注册矩阵的搜索成本、开发损伤、匹配对照与覆盖汇总 |
 | `tests/helpers.py` | 测试共用的小型随机模型与 Runtime 夹具 |
 | `tests/test_core.py` | 内核测试：翻位可逆、置换保函数与保码（含 LayerNorm 解码器）、量化完整、in-range 规则 |
-| `tests/test_region_core.py` | 通用区域、合法置换、算法接口与包自包含性测试 |
+| `tests/test_region_core.py` | 通用区域、合法置换、算法接口、复用逐位一致及包自包含性测试 |
 | `tests/test_llm_region_study.py` | 正式文本矩阵、匹配重复、隔离与源码快照测试 |
 | `tests/test_vqa_region_study.py` | 正式 VQA 矩阵、输入身份与评价规则测试 |
 | `tests/test_official_okvqa.py` | 官方训练选择等价、来源绑定、图片失败不替换与新 parent 测试 |
