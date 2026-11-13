@@ -1,0 +1,16 @@
+# Second environment for checkpoints the requirements.txt Transformers does not implement:
+# Gemma-3 (gemma3_text), SmolVLM (Idefics3) and Qwen2.5-VL; it also runs every older model.
+# Identical to requirements.txt except Transformers and its tokenizers; keep the same torch
+# build so kernels match.  Plans record these versions and refuse to run under others.
+torch==2.4.1
+transformers==4.51.3
+tokenizers==0.21.1
+accelerate==1.14.0
+numpy==2.2.6
+datasets==3.0.1
+huggingface-hub==0.36.2
+pyarrow==24.0.0
+Pillow>=12.0
+matplotlib>=3.10
+safetensors>=0.5.3
+sentencepiece>=0.2.0

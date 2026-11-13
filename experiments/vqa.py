@@ -1,10 +1,19 @@
 """Audited development-only VQA RegionAlign matrix.
 
-The plan freezes LLaVA-1.5/Qwen2-VL x INT8/INT4 x OK-VQA/TextVQA,
+The plan freezes the named development VLMs x INT8/INT4 x OK-VQA/TextVQA,
 twelve result-independent 4 KiB regions, three repeat seeds and the matched
 noperm/local/random arms.  Only train-derived search/dev panels are accepted;
 there is no test/final command.  A task whose train data is absent remains in
 the matrix as an explicit unavailable condition and cannot be executed.
+OK-VQA may instead be bound to the audited official train2014 inputs that
+``official_okvqa prepare-inputs`` publishes (the Hugging Face copy has no
+training split); its selection, panels and bootstraps are copied unchanged.
+
+The plan names the runtime that executes it: ``full_model`` runs the complete
+multimodal model for every pass; ``cached_features_language_passes_v1``
+computes each row's image features once and runs language-only passes (see
+``runtimes.vqa.CachedVQARegionRuntime``).  Its preflight records parity with
+the complete model on the probe row.
 
 Search and evaluation are separate processes.  Sources, checkpoints, input
 Arrow files and the selected binary panels are hashed before execution.
@@ -43,7 +52,7 @@ SCOPE = "vqa_regionalign_dev"
 # two formats.  The development matrix uses ``DEV_MODELS`` instead, which is a
 # non-empty subset of ``V.MODEL_KEYS`` and may hold any number of models.
 MODELS = ("llava-1.5-7b", "qwen2-vl-7b")
-DEV_MODELS = ("qwen2-vl-2b",)
+DEV_MODELS = ("qwen2-vl-2b", "smolvlm-instruct", "qwen2.5-vl-3b")
 FORMATS = ("int8", "int4")
 TASKS = V.TASKS
 ARMS = ("noperm", "local", "random")
@@ -59,6 +68,10 @@ GRAD_BATCH_SIZE = 1
 EVAL_BATCH_SIZE = 1
 MIN_FREE_GPU_GIB = 40.0
 MIN_FREE_POLICY = "available_cuda_memory_before_model_load"
+DEFAULT_RUNTIME = V.CachedVQARegionRuntime.RUNTIME
+# The cached runtime must reproduce the complete model on the preflight probe row:
+# the same answer NLL within the clean gate's tolerance and allclose prefill logits.
+RUNTIME_PARITY_NLL = R.GATE_NLL
 
 MODEL_SPECS = {
     "llava-1.5-7b": {
@@ -75,6 +88,16 @@ MODEL_SPECS = {
         "cache_component": "models--Qwen--Qwen2-VL-2B-Instruct",
         "repository": "Qwen/Qwen2-VL-2B-Instruct", "model_type": "qwen2_vl",
         "layers": 28, "hidden": 1536, "mlp": 8960, "heads": 12, "kv_heads": 2,
+    },
+    "smolvlm-instruct": {          # Idefics3: SigLIP + SmolLM2-1.7B language model
+        "cache_component": "models--HuggingFaceTB--SmolVLM-Instruct",
+        "repository": "HuggingFaceTB/SmolVLM-Instruct", "model_type": "idefics3",
+        "layers": 24, "hidden": 2048, "mlp": 8192, "heads": 32, "kv_heads": 32,
+    },
+    "qwen2.5-vl-3b": {
+        "cache_component": "models--Qwen--Qwen2.5-VL-3B-Instruct",
+        "repository": "Qwen/Qwen2.5-VL-3B-Instruct", "model_type": "qwen2_5_vl",
+        "layers": 36, "hidden": 2048, "mlp": 11008, "heads": 16, "kv_heads": 2,
     },
 }
 
@@ -159,8 +182,9 @@ def load_plan(run):
                           "min_free_gpu_gib": MIN_FREE_GPU_GIB,
                           "min_free_policy": MIN_FREE_POLICY,
                           "real_gpu_preflight_required": True}
-    if plan.get("execution") != expected_execution:
+    if not execution_matches(plan.get("execution"), expected_execution):
         raise ValueError("formal VQA execution parameters differ from the frozen protocol")
+    M.check_library_versions(plan.get("environment"))
     _assert_frozen(run, plan)
     plan_sha256 = M.sha256(path)
     status = M.read_json(run / "status.json")
@@ -341,16 +365,63 @@ def _freeze_dataset(run, task, paths, missing):
     return record
 
 
-def make_plan(run, models, task_paths, missing_tasks=(), note=""):
+def _official_okvqa_dataset(run, inputs, sources):
+    """Bind OK-VQA to audited official train2014 inputs, copying their panels unchanged.
+
+    The binding is the one ``official_okvqa.prepare_parent`` writes; the helper's
+    source joins the plan's frozen sources because the inputs are bound to it.
+    """
+    from copy import deepcopy
+    from regionalign.experiments import official_okvqa as O
+    root, audit, selection = O._verified_inputs(inputs)
+    panels = {}
+    for split in ("search", "dev"):
+        record = audit["panels"][split]
+        target = Path(run) / record["path"]
+        if Path(record["path"]).parts[:2] != ("panels", "okvqa"):
+            raise ValueError(f"unexpected official panel location {record['path']}")
+        O._publish_bytes(target, (root / record["path"]).read_bytes())
+        if M.sha256(target) != record["sha256"] or target.stat().st_size != record["bytes"]:
+            raise RuntimeError(f"official {split} panel changed while copying")
+        panels[split] = deepcopy(record)
+    helper = C.PROJECT / O.MODULE_SOURCE
+    snapshot = Path("source") / str(O.MODULE_SOURCE).replace("/", "__")
+    (Path(run) / snapshot).parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(helper, Path(run) / snapshot)
+    sources.append({"path": str(O.MODULE_SOURCE), "snapshot": str(snapshot),
+                    "sha256": M.sha256(helper), "bytes": helper.stat().st_size})
+    binding = {"provider": "official_okvqa_and_coco", "source_split": "train2014",
+               "questions_url": O.QUESTIONS_URL, "annotations_url": O.ANNOTATIONS_URL,
+               "image_url_template": O.IMAGE_URL, "answer_field": selection["answer_field"],
+               "selection_rule": O.SELECTION_RULE, "selection_seed": V.PANEL_SEED,
+               "audit_path": str(root / "audit.json"), "audit_sha256": M.sha256(root / "audit.json"),
+               "selection_sha256": audit["selection"]["sha256"],
+               "input_scope": O.SCOPE, "hf_repository_revision_claimed": False}
+    return {"status": "available", "dataset_binding": binding,
+            "source_files": [{"path": str(root / record["path"]), "sha256": record["sha256"],
+                              "bytes": record["bytes"]}
+                             for source in audit["official_sources"]
+                             for record in (source["archive"], source["json"])],
+            "image_manifest_sha256": M.object_sha256(audit["images"]),
+            "selection_seed": V.PANEL_SEED, "image_disjoint": True,
+            "panels": panels, "search_bootstraps": deepcopy(audit["search_bootstraps"])}
+
+
+def make_plan(run, models, task_paths, missing_tasks=(), note="", okvqa_official=None,
+              runtime=DEFAULT_RUNTIME):
     run = Path(run)
     if run.exists() and any(run.iterdir()):
         raise FileExistsError(f"run directory is not empty: {run}")
     run.mkdir(parents=True, exist_ok=True)
     if not models or not set(models) <= set(DEV_MODELS):
         raise ValueError(f"formal VQA plan names a non-empty subset of {sorted(DEV_MODELS)}")
+    if runtime not in V.RUNTIMES:
+        raise ValueError(f"unknown VQA runtime {runtime!r}; choose one of {sorted(V.RUNTIMES)}")
     missing_tasks = set(missing_tasks)
     if missing_tasks - set(TASKS):
         raise ValueError(f"unknown missing tasks: {sorted(missing_tasks - set(TASKS))}")
+    if okvqa_official is not None and (task_paths.get("okvqa") or "okvqa" in missing_tasks):
+        raise ValueError("official OK-VQA inputs replace OK-VQA train files and --missing-task okvqa")
     sources = _copy_sources(run)
     checkpoints = {key: _checkpoint_manifest(path, key) for key, path in models.items()}
     normalized_paths = {task: _training_paths(task_paths.get(task), task) for task in TASKS}
@@ -360,8 +431,10 @@ def make_plan(run, models, task_paths, missing_tasks=(), note=""):
     source_hashes = [{M.sha256(path) for path in normalized_paths[task]} for task in TASKS]
     if source_hashes[0] & source_hashes[1]:
         raise ValueError("OK-VQA and TextVQA may not share source contents")
-    datasets = {task: _freeze_dataset(run, task, normalized_paths[task],
-                                      task in missing_tasks) for task in TASKS}
+    datasets = {task: (_official_okvqa_dataset(run, okvqa_official, sources)
+                       if task == "okvqa" and okvqa_official is not None else
+                       _freeze_dataset(run, task, normalized_paths[task], task in missing_tasks))
+                for task in TASKS}
     conditions = []
     for model_key in [key for key in DEV_MODELS if key in models]:
         base_dims = checkpoints[model_key]["dims"]
@@ -400,9 +473,11 @@ def make_plan(run, models, task_paths, missing_tasks=(), note=""):
                       "eval_batch_size": EVAL_BATCH_SIZE,
                       "min_free_gpu_gib": MIN_FREE_GPU_GIB,
                       "min_free_policy": MIN_FREE_POLICY,
-                      "real_gpu_preflight_required": True},
+                      "real_gpu_preflight_required": True,
+                      "runtime": runtime},
         "work_items_per_condition": per_condition,
         "registered_available_searches": available * per_condition,
+        "environment": M.library_versions(),
         "sources": sources, "note": note,
         "claim_boundary": "offline software fault simulation; no physical fault validation",
     }
@@ -572,11 +647,28 @@ def _verify_checkpoint(plan, condition):
     return Path(expected["path"])
 
 
+def execution_matches(execution, expected):
+    """A frozen execution block equals ``expected`` apart from an optional known ``runtime``."""
+    if not isinstance(execution, dict):
+        return False
+    rest = dict(execution)
+    runtime = rest.pop("runtime", V.HFVQARegionRuntime.RUNTIME)
+    return rest == expected and runtime in V.RUNTIMES
+
+
+def _runtime_class(plan):
+    """The runtime the plan froze; plans written before the choice existed ran the full model."""
+    name = plan["execution"].get("runtime", V.HFVQARegionRuntime.RUNTIME)
+    if name not in V.RUNTIMES:
+        raise ValueError(f"plan names unknown VQA runtime {name!r}")
+    return V.RUNTIMES[name]
+
+
 def _load_runtime(run, plan, condition, split, device):
     _require_gpu_resources(device, plan["execution"])
     checkpoint = _verify_checkpoint(plan, condition)
     rows = _read_panel(run, condition, split)
-    runtime = V.HFVQARegionRuntime.load(condition["model"], checkpoint, condition["format"],
+    runtime = _runtime_class(plan).load(condition["model"], checkpoint, condition["format"],
                                         {split: rows}, condition["task"], device)
     if P.dims(runtime.lm) != condition["dims"]:
         runtime.close()
@@ -629,6 +721,13 @@ def run_preflight(run, condition_id, device="cuda:0", log=print):
         runtime.rows["search"] = runtime._prepare_rows(sampled)
         probe_rows = runtime.rows["search"][:1]
         region, dims = item["region"], condition["dims"]
+        parity = None
+        if isinstance(runtime, V.CachedVQARegionRuntime):
+            parity = runtime.reference_parity(probe_rows[0])
+            parity["nll_tolerance"] = RUNTIME_PARITY_NLL
+            if (not parity["logits_allclose"]
+                    or not parity["nll_abs_difference"] <= RUNTIME_PARITY_NLL):
+                raise RuntimeError(f"cached runtime differs from the complete model: {parity}")
         baseline = runtime.prefill_logits(probe_rows)
         fingerprint = R.model_checksum(runtime.lm)
         candidates = R.reachable_rows(region, dims)
@@ -672,6 +771,7 @@ def run_preflight(run, condition_id, device="cuda:0", log=print):
             "gradient_finite": bool(torch.isfinite(gradient).all()),
             "score": generated["acc"], "eos_rate": generated["eos_rate"],
             "length_rate": generated["length_rate"], "arms": arms,
+            "runtime": type(runtime).RUNTIME, "runtime_parity": parity,
         }
         if not report["gradient_finite"]:
             raise RuntimeError("preflight gradient is non-finite")
@@ -1014,10 +1114,13 @@ def parser():
     commands = root.add_subparsers(dest="command", required=True)
     plan = commands.add_parser("plan")
     plan.add_argument("--model", action="append", required=True,
-                      help="repeat exactly twice: model-key=/checkpoint")
+                      help="repeat once per development model: model-key=/checkpoint")
     plan.add_argument("--textvqa-train", nargs="*", default=[])
     plan.add_argument("--okvqa-train", nargs="*", default=[])
     plan.add_argument("--missing-task", action="append", default=[], choices=TASKS)
+    plan.add_argument("--okvqa-official",
+                      help="audited official OK-VQA train inputs (official_okvqa prepare-inputs)")
+    plan.add_argument("--runtime", default=DEFAULT_RUNTIME, choices=sorted(V.RUNTIMES))
     plan.add_argument("--output")
     plan.add_argument("--note", default="")
     preflight = commands.add_parser("preflight")
@@ -1043,7 +1146,8 @@ def main(argv=None):
         output = C.fresh_output_dir("vqa_region_study", "formal_dev", args.output)
         make_plan(output, models,
                   {"textvqa": args.textvqa_train, "okvqa": args.okvqa_train},
-                  args.missing_task, args.note)
+                  args.missing_task, args.note, okvqa_official=args.okvqa_official,
+                  runtime=args.runtime)
         print(output, flush=True)
     elif args.command == "preflight":
         run_preflight(args.run, args.condition, args.device)

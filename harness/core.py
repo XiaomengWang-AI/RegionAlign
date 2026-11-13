@@ -6,14 +6,15 @@ layout arms on top of it.
 
 Conventions
 - Tensor names are relative to a Llama-compatible decoder backbone (for example
-  LlamaForCausalLM, Mistral or Qwen2), e.g. ``model.layers.3.mlp.down_proj.weight``.
+  LlamaForCausalLM, Mistral, Qwen2, StableLM or Gemma-2/3), e.g.
+  ``model.layers.3.mlp.down_proj.weight``.
 - Weight formats: ``int8`` and ``int4`` are the formats the experiments use;
   ``bf16`` is the unquantized checkpoint.  In the int formats every decoder
   parameter is stored as two's complement codes with fixed FP32 scales (see
   ``quantize``); element ``e`` of such a tensor is code ``e`` and bit ``b`` is a
   bit of that code (int8: byte ``e``; int4: byte ``e // 2``, low nibble first).
-  This includes embeddings, ``lm_head``, all decoder Linears and every RMSNorm
-  gain.  The scales are not a fault target.  Computation uses the decoded
+  This includes embeddings, ``lm_head``, all decoder Linears and every norm
+  gain and bias.  The scales are not a fault target.  Computation uses the decoded
   weights in the parameter dtype.  A BF16 element ``e`` occupies bytes ``2e``
   and ``2e + 1`` (bit 15 is the sign).
 - A permutation order is always ``new_index -> old_index``.
@@ -27,6 +28,7 @@ Conventions
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from collections import defaultdict
@@ -43,6 +45,15 @@ LOGIT_ATOL, LOGIT_RTOL = 0.5, 0.02
 FORMATS = ("bf16", "int8", "int4")
 FORMAT_BITS = {"bf16": 16, "int8": 8, "int4": 4}
 GROUP = 128                    # int4: input columns that share one scale
+# Per-layer vectors indexed by the residual stream: every decoder has the first two,
+# Gemma-2/3 add the sandwich norms around the MLP.  The residual order moves all present.
+RESIDUAL_NORMS = ("input_layernorm", "post_attention_layernorm")
+EXTRA_RESIDUAL_NORMS = ("pre_feedforward_layernorm", "post_feedforward_layernorm")
+# Gains over one head's dimensions, shared by all heads (Gemma-3 q/k norms).  Legal
+# layouts move whole heads and never move q/k dimensions inside a head, so they stay put.
+HEAD_NORMS = ("self_attn.q_norm", "self_attn.k_norm")
+LINEARS = ("self_attn.q_proj", "self_attn.k_proj", "self_attn.v_proj", "self_attn.o_proj",
+           "mlp.gate_proj", "mlp.up_proj", "mlp.down_proj")
 
 
 # ---------------------------------------------------------------- reporting
@@ -255,7 +266,9 @@ def dims_from_config(config, quant_group=None):
     ``num_key_value_heads`` is absent on older MHA checkpoints, where it is
     exactly ``num_attention_heads``.  For GQA/MQA, attention-head transforms
     are restricted to whole query-head groups; the MLP and residual families
-    remain unchanged.  Keeping this description in one place lets planning
+    remain unchanged.  ``head_dim`` is the config's declared head width when it
+    has one (Gemma: heads x head_dim differs from hidden_size), else
+    hidden_size / heads.  Keeping this description in one place lets planning
     code validate a checkpoint without loading its weights.
     """
     layers = getattr(config, "num_hidden_layers", None)
@@ -263,6 +276,7 @@ def dims_from_config(config, quant_group=None):
     mlp = getattr(config, "intermediate_size", None)
     heads = getattr(config, "num_attention_heads", None)
     kv_heads = getattr(config, "num_key_value_heads", None)
+    head_dim = getattr(config, "head_dim", None)
     if kv_heads is None:
         # Older MHA configs omit the field; an explicit null has the same
         # meaning. A present zero is still rejected below instead of being
@@ -273,10 +287,16 @@ def dims_from_config(config, quant_group=None):
     if not all(isinstance(value, int) and value > 0 for value in
                (layers, hidden, mlp, heads, kv_heads)):
         raise ValueError("decoder dimensions must be positive integers")
-    if hidden % heads or heads % kv_heads:
-        raise ValueError("hidden_size must divide attention heads and query groups must divide heads")
+    if head_dim is None:
+        if hidden % heads:
+            raise ValueError("hidden_size must divide attention heads when head_dim is implicit")
+        head_dim = hidden // heads
+    elif isinstance(head_dim, bool) or not isinstance(head_dim, int) or head_dim < 1:
+        raise ValueError("head_dim must be a positive integer")
+    if heads % kv_heads:
+        raise ValueError("query groups must divide attention heads")
     out = {"layers": layers, "hidden": hidden, "mlp": mlp, "heads": heads,
-           "head_dim": hidden // heads, "group": quant_group}
+           "head_dim": head_dim, "group": quant_group}
     if kv_heads != heads:
         out["kv_heads"] = kv_heads
         out["query_group_size"] = heads // kv_heads
@@ -297,23 +317,27 @@ def dims(lm):
     return dims_from_config(config, quant_group=quant_group)
 
 
+def attention_width(d):
+    """Rows of q_proj (and columns of o_proj): heads x head_dim, not always hidden_size."""
+    return d["heads"] * d["head_dim"]
+
+
 def validate_parameter_layout(lm, d=None):
     """Check that a loaded checkpoint has the Llama-compatible tensor schema.
 
     The attention equations are shared by many decoder families, but parameter
     names are not.  We support models that expose the standard Hugging Face
-    ``model.layers.*`` schema (including common Llama/Mistral/Qwen2 variants)
-    and fail early for other schemas instead of silently permuting the wrong
-    axes.
+    ``model.layers.*`` schema (including common Llama/Mistral/Qwen2/StableLM/
+    Gemma variants) and fail early for other schemas instead of silently
+    permuting the wrong axes: every stored parameter must be one whose place
+    under a legal layout is known (core weights, Linear and norm biases, the
+    optional residual norms and the per-head q/k gains).
     """
     d = d or dims(lm)
     required = ["model.embed_tokens.weight", "lm_head.weight", "model.norm.weight"]
     for layer in range(d["layers"]):
         prefix = f"model.layers.{layer}."
-        required.extend(prefix + name + ".weight" for name in (
-            "self_attn.q_proj", "self_attn.k_proj", "self_attn.v_proj",
-            "self_attn.o_proj", "mlp.gate_proj", "mlp.up_proj", "mlp.down_proj",
-            "input_layernorm", "post_attention_layernorm"))
+        required.extend(prefix + name + ".weight" for name in LINEARS + RESIDUAL_NORMS)
     try:
         params = {name: lm.get_parameter(name) for name in required}
     except (AttributeError, KeyError) as error:
@@ -347,6 +371,26 @@ def validate_parameter_layout(lm, d=None):
                 raise ValueError(f"unexpected shape for {name}: {actual}")
         elif actual != shape:
             raise ValueError(f"unexpected shape for {name}: {actual}, expected {shape}")
+    optional = {"model.norm.bias": (d["hidden"],)}
+    for layer in range(d["layers"]):
+        prefix = f"model.layers.{layer}."
+        for name in LINEARS:
+            optional[prefix + name + ".bias"] = (expected[prefix + name + ".weight"][0],)
+        for name in EXTRA_RESIDUAL_NORMS:
+            optional[prefix + name + ".weight"] = (d["hidden"],)
+        for name in RESIDUAL_NORMS + EXTRA_RESIDUAL_NORMS:
+            optional[prefix + name + ".bias"] = (d["hidden"],)
+        for name in HEAD_NORMS:
+            optional[prefix + name + ".weight"] = (hd,)
+    present = dict(lm.named_parameters())
+    unknown = sorted(set(present) - set(expected) - set(optional))
+    if unknown:
+        raise ValueError(f"no legal layout rule for decoder parameters {unknown[:6]}"
+                         + (f" and {len(unknown) - 6} more" if len(unknown) > 6 else ""))
+    for name, shape in optional.items():
+        if name in present and tuple(present[name].shape) != shape:
+            raise ValueError(f"unexpected shape for {name}: {tuple(present[name].shape)}, "
+                             f"expected {shape}")
     return d
 
 
@@ -388,7 +432,7 @@ def validate_spec(spec, d):
     out = {"residual": None, "mlp": {}, "heads": {}, "vo": {}}
     if spec.get("residual") is not None:
         out["residual"] = _order(spec["residual"], d["hidden"], "residual")
-    for family, size in (("mlp", d["mlp"]), ("heads", d["heads"]), ("vo", d["hidden"])):
+    for family, size in (("mlp", d["mlp"]), ("heads", d["heads"]), ("vo", attention_width(d))):
         orders = spec.get(family) or {}
         if not isinstance(orders, dict):
             raise ValueError(f"{family} must map layer -> order")
@@ -468,8 +512,7 @@ def axis_orders(spec, d):
             for name in ("self_attn.q_proj", "self_attn.k_proj", "self_attn.v_proj",
                          "mlp.gate_proj", "mlp.up_proj"):
                 put(prefix + name + ".weight", 1, residual)
-            for name in ("self_attn.o_proj", "mlp.down_proj", "input_layernorm",
-                         "post_attention_layernorm"):
+            for name in ("self_attn.o_proj", "mlp.down_proj") + RESIDUAL_NORMS:
                 put(prefix + name + ".weight", 0, residual)
     for layer, order in spec["mlp"].items():
         prefix = f"model.layers.{layer}.mlp."
@@ -483,7 +526,7 @@ def axis_orders(spec, d):
         prefix = f"model.layers.{layer}.self_attn."
         heads = spec["heads"].get(layer)
         qk = [h * hd + i for h in heads for i in range(hd)] if heads else None
-        values = spec["vo"].get(layer) or list(range(d["hidden"]))
+        values = spec["vo"].get(layer) or list(range(attention_width(d)))
         vo = [values[j] for j in qk] if qk else values    # value dims first, then heads
         if qk:
             put(prefix + "q_proj.weight", 0, qk)
@@ -517,19 +560,30 @@ def axis_orders(spec, d):
 
 
 def parameter_axis_orders(lm, spec, d):
-    """Axis orders for stored parameters, including optional module biases.
+    """Axis orders for stored parameters, including optional biases and norms.
 
     ``axis_orders`` describes the algebraic weight transform independently of a
     checkpoint.  Some compatible decoders (notably Qwen2) also store biases on
     q/k/v projections.  A Linear bias is indexed by its output coordinate, so it
     must follow exactly the same order whenever axis 0 of the sibling weight is
-    moved.  Input-axis permutations leave it unchanged.  Expanding the orders
-    from the loaded parameter map keeps bias-free Llama checkpoints byte-for-byte
-    on their historical path while making biased compatible decoders exact.
+    moved.  Input-axis permutations leave it unchanged.  Likewise the optional
+    residual norms (``EXTRA_RESIDUAL_NORMS``) and norm biases follow the
+    residual order wherever the checkpoint stores them.  Expanding the orders
+    from the loaded parameter map keeps Llama checkpoints byte-for-byte on their
+    historical path while making the other compatible decoders exact.
     """
     orders = axis_orders(spec, d)
     expanded = dict(orders)
-    for (name, axis), order in orders.items():
+    if spec["residual"] is not None:
+        for layer in range(d["layers"]):
+            for norm in EXTRA_RESIDUAL_NORMS:
+                name = f"model.layers.{layer}.{norm}.weight"
+                try:
+                    lm.get_parameter(name)
+                except (AttributeError, KeyError):
+                    continue
+                expanded[(name, 0)] = spec["residual"]
+    for (name, axis), order in list(expanded.items()):
         if axis != 0 or not name.endswith(".weight"):
             continue
         bias_name = name[:-len("weight")] + "bias"
@@ -716,9 +770,16 @@ def check_attack(rt, flips, k):
 
 
 # ---------------------------------------------------------------- loss
+def _content_key(value):
+    """JSON stand-in for raw bytes (e.g. a VQA image): their length and SHA256."""
+    if isinstance(value, (bytes, bytearray)):
+        return {"bytes": len(value), "sha256": hashlib.sha256(value).hexdigest()}
+    raise TypeError(f"{type(value).__name__} is not row content")
+
+
 def distinct_rows(rows):
     """``(first, expand)``: the first position of each distinct row and every row's index
-    into ``first``, or None when a row is not plain JSON data.
+    into ``first``, or None when a row is not plain JSON data (raw bytes count as data).
 
     Rows are distinct by content, so the repeats of a with-replacement bootstrap
     panel collapse onto one row.
@@ -726,7 +787,7 @@ def distinct_rows(rows):
     first, expand, seen = [], [], {}
     for index, row in enumerate(rows):
         try:
-            key = json.dumps(row, sort_keys=True, allow_nan=False)
+            key = json.dumps(row, sort_keys=True, allow_nan=False, default=_content_key)
         except (TypeError, ValueError):
             return None
         position = seen.setdefault(key, len(first))
@@ -808,21 +869,48 @@ class BaseRuntime:
         x, mask = self._pad(seqs, left=False)
         return x, mask, spans
 
+    def _decoder_kwargs(self, rows, x):
+        """Extra decoder inputs for the embedded batch ``x`` (e.g. multimodal positions)."""
+        return {}
+
+    def _logits(self, hidden):
+        """Output head as the model applies it, including a final logit soft-cap (Gemma-2)."""
+        logits = self.lm.lm_head(hidden)
+        cap = getattr(getattr(self.lm, "config", None), "final_logit_softcapping", None)
+        if cap is not None:
+            import torch
+            logits = torch.tanh(logits / cap) * cap
+        return logits
+
     def _hidden(self, rows, x, mask):
-        """Final decoder states; one row with an active prefix state starts at its layer."""
+        """Final decoder states; one row with an active prefix state starts at its layer.
+
+        The resumed pass feeds the recorded state straight into its first layer, so
+        whatever the model does to ``inputs_embeds`` before the stack (Gemma scales
+        them) is not applied twice.
+        """
+        extra = self._decoder_kwargs(rows, x)
         prefix = self._prefix
         state = (prefix["states"].get(id(rows[0]))
                  if prefix is not None and len(rows) == 1 else None)
         if state is None:
-            return self.lm.model(inputs_embeds=x, attention_mask=mask, use_cache=False)[0]
+            return self.lm.model(inputs_embeds=x, attention_mask=mask, use_cache=False,
+                                 **extra)[0]
         if state.shape != x.shape or state.dtype != x.dtype:
             raise RuntimeError("a reused prefix state does not match its row")
+
+        def inject(_module, args, kwargs):
+            if args:
+                return (state, *args[1:]), kwargs
+            return args, {**kwargs, "hidden_states": state}
         model = self.lm.model
         layers = model.layers
         model.layers = layers[prefix["layer"]:]
+        handle = model.layers[0].register_forward_pre_hook(inject, with_kwargs=True)
         try:
-            return model(inputs_embeds=state, attention_mask=mask, use_cache=False)[0]
+            return model(inputs_embeds=state, attention_mask=mask, use_cache=False, **extra)[0]
         finally:
+            handle.remove()
             model.layers = layers
 
     def prefix_states(self, rows, layer):
@@ -858,7 +946,8 @@ class BaseRuntime:
                 for row in rows:
                     x, mask, _ = self._batch([row])
                     try:
-                        self.lm.model(inputs_embeds=x, attention_mask=mask, use_cache=False)
+                        self.lm.model(inputs_embeds=x, attention_mask=mask, use_cache=False,
+                                      **self._decoder_kwargs([row], x))
                     except _StopForward:
                         pass
                     if len(recorded) != 1:
@@ -891,7 +980,7 @@ class BaseRuntime:
         hidden = self._hidden(rows, x, mask)
         losses = []
         for i, (n, a, w) in enumerate(spans):
-            logits = self.lm.lm_head(hidden[i, n - 1:n - 1 + len(a)]).float()
+            logits = self._logits(hidden[i, n - 1:n - 1 + len(a)]).float()
             if w is None:
                 losses.append(F.cross_entropy(logits, a))
             else:
@@ -940,7 +1029,7 @@ class BaseRuntime:
                     out = self.lm.model(inputs_embeds=x, attention_mask=mask,
                                         position_ids=position, use_cache=True)
                     past = out.past_key_values
-                    logits = self.lm.lm_head(out[0][:, -1]).float()
+                    logits = self._logits(out[0][:, -1]).float()
                     bad = ~torch.isfinite(logits).all(-1)
                     nxt, last = logits.argmax(-1), position[:, -1]
                     tokens = [[] for _ in batch]
@@ -959,7 +1048,7 @@ class BaseRuntime:
                                             position_ids=last[:, None], past_key_values=past,
                                             use_cache=True)
                         past = out.past_key_values
-                        logits = self.lm.lm_head(out[0][:, -1]).float()
+                        logits = self._logits(out[0][:, -1]).float()
                         bad |= ~torch.isfinite(logits).all(-1) & ~done
                         nxt = logits.argmax(-1)
                 for i, row in enumerate(batch):
@@ -998,4 +1087,4 @@ class BaseRuntime:
             position = (mask.cumsum(-1) - 1).clamp_min(0)
             hidden = self.lm.model(inputs_embeds=x, attention_mask=mask, position_ids=position,
                                    use_cache=False)[0]
-            return self.lm.lm_head(hidden[:, -1]).float()
+            return self._logits(hidden[:, -1]).float()

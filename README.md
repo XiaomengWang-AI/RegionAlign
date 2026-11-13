@@ -12,19 +12,20 @@
 | `config.py` | 本包自有的路径、离线环境设置和只新增的结果路径 |
 | `runtime.json` | 本机配置：`hf_home` 指向模型与数据缓存 |
 | `requirements.txt` | 本包直接依赖及实验所用版本 |
-| `harness/core.py` | 自包含内核：权重量化、合法置换、翻位与 in-range 校验、基础 Runtime 及逐位不变的前向复用 |
+| `requirements-tf451.txt` | 第二套环境（transformers 4.51.3）：Gemma-3、SmolVLM、Qwen2.5-VL；计划冻结库版本 |
+| `harness/core.py` | 自包含内核：权重量化、合法置换（含 Gemma 的 head_dim 与额外残差归一化）、翻位与 in-range 校验、基础 Runtime 及逐位不变的前向复用 |
 | `harness/region.py` | 通用区域几何、合法布局、区域校验与计算预算上下文（含重复行与层前缀复用） |
 | `harness/evidence.py` | JSON 数值清理等证据辅助函数 |
 | `algorithm/search.py` | 正式区域实验共用的搜索算法 |
 | `runtimes/text.py` | MMLU/WikiText 冻结 token 面板及正式文本目标 |
-| `runtimes/vqa.py` | LLaVA/Qwen2-VL 的训练集面板、多模态计算及评分适配 |
+| `runtimes/vqa.py` | LLaVA/Qwen2-VL/Qwen2.5-VL/SmolVLM 的训练集面板、多模态计算及评分适配；完整模型与缓存图像特征两种运行时 |
 | `runtimes/vqa_score.py` | 官方 VQA 答案归一化与一致性准确率 |
 | `experiments/llm.py` | 已登记 LLM（计划可取任意非空子集）的正式开发集匹配矩阵 |
-| `experiments/vqa.py` | LLaVA/Qwen2-VL 的正式开发集匹配矩阵及 GPU preflight |
+| `experiments/vqa.py` | 已登记开发 VLM 的正式开发集匹配矩阵、官方 OK-VQA 训练输入绑定及 GPU preflight |
 | `experiments/official_okvqa.py` | 官方训练来源的独立归档、面板选择审计与四条件 parent |
-| `experiments/clean_mmlu.py` | 无故障 MMLU 量化基线、模型加载及输入/源码审计 |
+| `experiments/clean_mmlu.py` | LLM 登记表、无故障 MMLU 量化基线、模型加载及输入/源码审计 |
 | `experiments/clean_wikitext.py` | 无故障 WikiText 开发集基线 |
-| `experiments/clean_benchmarks.py` | 完整 WikiText/VQA 无故障最终基线及共用多模态加载器 |
+| `experiments/clean_benchmarks.py` | 完整 WikiText/VQA 无故障最终基线及按模型族选择的共用多模态加载器 |
 | `experiments/clean_memory.py` | clean 基线的独立显存策略与合成内存标定入口 |
 | `experiments/campaign_protocol.py` | 原字节继承面板的新计划、显式资源策略和独立计算预算 |
 | `experiments/campaign_variants.py` | 消融变体的冻结注册项、参考基线与开发阶段执行 |
@@ -49,6 +50,8 @@
 | `tests/test_vqa_region_study.py` | 正式 VQA 矩阵、输入身份与评价规则测试 |
 | `tests/test_official_okvqa.py` | 官方训练选择等价、来源绑定、图片失败不替换与新 parent 测试 |
 | `tests/test_matrix_vqa_runtime.py` | 多模态运行时、GQA 与视觉通道同步测试 |
+| `tests/test_vqa_cached_runtime.py` | 缓存图像特征运行时与完整模型的一致性、布局与复用测试 |
+| `tests/test_decoder_families.py` | Gemma 结构（显式 head_dim、额外归一化、soft-cap）的内核规则测试 |
 | `tests/test_mmlu_clean.py` | clean MMLU 评分、量化及证据协议测试 |
 | `tests/test_clean_benchmarks.py` | 最终 clean 基线、预检及逐样本完整性测试 |
 | `tests/test_clean_memory.py` | 显存策略隔离、计划身份与标定失败路径测试 |
@@ -70,7 +73,7 @@
 | `.claude/review-loop/` | Codex 只读交叉审查脚本 |
 
 包初始化不启动实验。本包自包含：不导入包外代码，唯一的外部输入是 `runtime.json` 里 `hf_home` 指向的缓存。
-命令在包的上一级目录以 `python -m regionalign...` 运行；依赖见 `requirements.txt`。
+命令在包的上一级目录以 `python -m regionalign...` 运行；依赖见 `requirements.txt`，Gemma-3、SmolVLM、Qwen2.5-VL 用 `requirements-tf451.txt` 的环境。
 
 ## 数据与结果导航
 

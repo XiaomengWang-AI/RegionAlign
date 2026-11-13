@@ -110,6 +110,23 @@ MODEL_SPECS = {
         "hidden_size": 2048, "intermediate_size": 8192, "num_hidden_layers": 24,
         "num_attention_heads": 32, "num_key_value_heads": 32, "vocab_size": 49152,
     },
+    # Gemma checkpoints declare head_dim; heads x head_dim differs from hidden_size.
+    "gemma2-2b": {
+        "cache_component": "models--google--gemma-2-2b",
+        "repository": "google/gemma-2-2b",
+        "architecture": ["Gemma2ForCausalLM"], "model_type": "gemma2",
+        "hidden_size": 2304, "intermediate_size": 9216, "num_hidden_layers": 26,
+        "num_attention_heads": 8, "num_key_value_heads": 4, "vocab_size": 256000,
+        "head_dim": 256,
+    },
+    "gemma3-1b": {
+        "cache_component": "models--google--gemma-3-1b-pt",
+        "repository": "google/gemma-3-1b-pt",
+        "architecture": ["Gemma3ForCausalLM"], "model_type": "gemma3_text",
+        "hidden_size": 1152, "intermediate_size": 6912, "num_hidden_layers": 26,
+        "num_attention_heads": 4, "num_key_value_heads": 1, "vocab_size": 262144,
+        "head_dim": 256,
+    },
 }
 # The clean paper matrix and its summary are defined on these three checkpoints.  The
 # other registered checkpoints are available to the RegionAlign development matrix only.
@@ -182,6 +199,29 @@ def software_environment():
     import transformers
     return {"python": sys.version.split()[0], "torch": torch.__version__,
             "transformers": transformers.__version__, "pyarrow": pyarrow.__version__}
+
+
+def library_versions():
+    """Libraries that decide model code and numerics.  A plan freezes them (see
+    ``check_library_versions``): the Gemma-3, SmolVLM and Qwen2.5-VL checkpoints
+    need ``requirements-tf451.txt``, the older matrix ``requirements.txt``."""
+    import tokenizers
+    import torch
+    import transformers
+    return {"torch": torch.__version__, "transformers": transformers.__version__,
+            "tokenizers": tokenizers.__version__}
+
+
+def check_library_versions(frozen):
+    """Refuse to run a plan under other library versions than it was frozen with.
+
+    Plans written before versions were frozen carry none and are not checked.
+    """
+    if frozen is None:
+        return
+    live = library_versions()
+    if live != frozen:
+        raise RuntimeError(f"plan was frozen with {frozen}; this environment has {live}")
 
 
 def runtime_device_identity(torch, device):
@@ -493,6 +533,8 @@ def checkpoint_manifest(checkpoint, model_key):
     declared = config.get("_name_or_path")
     if declared and declared != expected["repository"]:
         mismatches["_name_or_path"] = (declared, expected["repository"])
+    if "head_dim" in expected and config.get("head_dim") != expected["head_dim"]:
+        mismatches["head_dim"] = (config.get("head_dim"), expected["head_dim"])
     if mismatches:
         raise ValueError(f"{model_key} is not the frozen base architecture: {mismatches}")
     records = [file_record(path, checkpoint) for path in checkpoint_files(checkpoint)]
@@ -849,6 +891,18 @@ def condition_lock(target):
             handle.close()
 
 
+def attention_implementation(config):
+    """Attention kernel that computes the checkpoint's own equations.
+
+    Hugging Face's SDPA path silently skips Gemma-2's attention-logit soft-cap,
+    so a checkpoint that declares one runs the eager implementation.  Every
+    other checkpoint keeps the library default (None).  ``config`` is a loaded
+    config or the raw ``config.json`` mapping.
+    """
+    get = config.get if isinstance(config, dict) else (lambda key: getattr(config, key, None))
+    return "eager" if get("attn_logit_softcapping") is not None else None
+
+
 def load_model(checkpoint, fmt, device, min_free_gpu_bytes=MIN_FREE_GPU_BYTES):
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -869,6 +923,7 @@ def load_model(checkpoint, fmt, device, min_free_gpu_bytes=MIN_FREE_GPU_BYTES):
     model = AutoModelForCausalLM.from_pretrained(
         checkpoint, local_files_only=True, trust_remote_code=False,
         torch_dtype=torch.bfloat16, low_cpu_mem_usage=True, device_map={"": device},
+        attn_implementation=attention_implementation(read_json(Path(checkpoint) / "config.json")),
     )
     model.eval().requires_grad_(False)
     model.config.use_cache = False

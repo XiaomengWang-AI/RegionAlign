@@ -48,8 +48,9 @@ def _parent(run):
                           "eval_batch_size": V.EVAL_BATCH_SIZE,
                           "min_free_gpu_gib": 22.0, "min_free_policy": V.MIN_FREE_POLICY,
                           "real_gpu_preflight_required": True}
-    if plan.get("execution") != expected_execution:
+    if not V.execution_matches(plan.get("execution"), expected_execution):
         raise ValueError("task transfer requires the frozen 22 GiB VQA resource policy")
+    M.check_library_versions(plan.get("environment"))
     # This checks actual live code as well as each original saved snapshot.
     V._assert_frozen(run, plan)
     plan["sha256"] = digest
@@ -73,8 +74,13 @@ def _conditions(source, source_task, target, target_task):
             or source.get("vqa_score_gate") != V.VQA_SCORE_GATE
             or source.get("success_relative_score_drop") != V.VQA_SUCCESS_DROP):
         raise ValueError("not the formal four-condition three-arm VQA baseline")
+    # A plan names a subset of the development registry; both sides must name the same one.
+    models = [key for key in V.DEV_MODELS if key in source.get("models", {})]
+    if not models or set(source.get("models", {})) != set(models) \
+            or set(target.get("models", {})) != set(models):
+        raise ValueError("source and target must name the same registered development VLMs")
     found = []
-    for model in V.DEV_MODELS:
+    for model in models:
         for fmt in V.FORMATS:
             sides = []
             for plan, task in ((source, source_task), (target, target_task)):

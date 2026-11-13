@@ -50,7 +50,9 @@ def tensor_shape(kind, d):
     if kind in ("k_proj", "v_proj"):
         kv_heads = d.get("kv_heads", d["heads"])
         return kv_heads * d["head_dim"], d["hidden"]
-    return d["hidden"], d["hidden"]
+    if kind == "o_proj":
+        return d["hidden"], P.attention_width(d)
+    return P.attention_width(d), d["hidden"]
 
 
 def elements_per_page(bits=8, page_bytes=PAGE_BYTES):
@@ -168,7 +170,7 @@ def _attention_spec(kind, layer, target_row, source_row, d):
     # represented by `heads`; the coordinate move is repeated for every query
     # head sharing the old source KV group, as required by GQA/MQA.
     heads = _kv_group_head_order(d, target_head, source_head)
-    values = list(range(d["hidden"]))
+    values = list(range(P.attention_width(d)))
     for query_head in range(source_head * qg, (source_head + 1) * qg):
         a = query_head * hd + target_index
         b = query_head * hd + source_index
