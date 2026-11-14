@@ -36,6 +36,7 @@
 | `experiments/campaign_watch.py` | 等待外部完成证据时的队列守候与恢复 |
 | `experiments/timeout_recovery.py` | 有明确 Slurm 时限证据的主队列有限续跑 |
 | `experiments/campaign_evaluation.py` | 全部开发产物封存后的最终与跨任务独立评价 |
+| `experiments/llm_injection.py` | 冻结 LLM 布局的单次注入 ASR 评价（区域内随机故障、冻结故障法则）|
 | `experiments/task_transfer.py` | 两份独立 VQA 开发计划之间的双向任务迁移评价 |
 | `experiments/checkpoint_transfer.py` | 同架构 checkpoint 之间的独立迁移评价 |
 | `experiments/input_audit.py` | 模型/数据缓存审计及显式输入下载（含全部已登记 LLM，可固定 Hub 版本） |
@@ -58,6 +59,7 @@
 | `tests/test_bounded_checksum.py` | 分块整数指纹等值性与临时内存边界测试 |
 | `tests/test_campaign_memory.py` | 分块执行策略的源码冻结和包装测试 |
 | `tests/test_layout_validation.py` | 布局等价性与资格结果状态测试 |
+| `tests/test_llm_injection.py` | 注入 ASR 故障采样、成功判据、计划哈希与分片命名测试 |
 | `tests/test_nohup_campaign.py` | 队列依赖、资源分配、锁与失败恢复测试 |
 | `tests/test_campaign_watch.py` | 队列守候、锁与外部证据到达测试 |
 | `tests/test_timeout_recovery.py` | 调度超时证据、恢复次数与原阶段续跑测试 |
