@@ -38,6 +38,7 @@
 | `experiments/campaign_evaluation.py` | 全部开发产物封存后的最终与跨任务独立评价 |
 | `experiments/llm_injection.py` | 冻结 LLM 布局的单次注入 ASR 评价（区域内随机故障、冻结故障法则）|
 | `experiments/llm_injection_biased.py` | 同上，但故障法则按位的位值 2^b 加权偏向符号/高位（每位仍有正概率，不排除任何位）；独立 scope 与计划，复用其无关法则的逻辑 |
+| `experiments/llm_injection_trace.py` | 与上两者完全同威胁模型/故障法则/成功判据，仅额外逐 trial 记录 ΔNLL、保留翻位数与类别（供损伤超越曲线 Fig. B）；法则由 plan 字段 `fault_law_kind`（uniform/highbias）选择，独立 scope，复用两基座评价器的无关法则辅助函数，不改其字节 |
 | `experiments/task_transfer.py` | 两份独立 VQA 开发计划之间的双向任务迁移评价 |
 | `experiments/checkpoint_transfer.py` | 同架构 checkpoint 之间的独立迁移评价 |
 | `experiments/input_audit.py` | 模型/数据缓存审计及显式输入下载（含全部已登记 LLM，可固定 Hub 版本） |
@@ -62,6 +63,7 @@
 | `tests/test_layout_validation.py` | 布局等价性与资格结果状态测试 |
 | `tests/test_llm_injection.py` | 注入 ASR 故障采样、成功判据、计划哈希与分片命名测试 |
 | `tests/test_llm_injection_biased.py` | 偏置故障法则的高位采样、per-element 丢弃不变量与独立协议常量测试 |
+| `tests/test_llm_injection_trace.py` | trace 评价器的法则映射、逐 trial 分类与基座一致、独立 scope 及源码快照测试 |
 | `tests/test_nohup_campaign.py` | 队列依赖、资源分配、锁与失败恢复测试 |
 | `tests/test_campaign_watch.py` | 队列守候、锁与外部证据到达测试 |
 | `tests/test_timeout_recovery.py` | 调度超时证据、恢复次数与原阶段续跑测试 |
