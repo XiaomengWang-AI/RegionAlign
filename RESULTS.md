@@ -47,6 +47,7 @@ ln -s /gpfs/work2/0/prjs1717/xwang/BFA_llm/regionalign/results /gpfs/work2/0/prj
 # 运行时 PYTHONPATH=/gpfs/work2/0/prjs1717/xwang/BFA_llm_vlm；用完 git worktree remove 即可
 ```
 
+Gemma/VLM 的三个计划和 INT4 重评在当前主线上就能直接加载，不需要另建工作树；其余计划要检出表中的提交。
 计划可以用新路径加载，也可以用旧别名路径加载（2026-11-23 已逐个验证主矩阵与全部注入计划）。
 **能加载，不等于能原样重放。** 下面两处例外：
 - `vlm_matrix/int4_reeval` 的 `binding.json` 记录的是旧路径 `campaigns/.../plans/vqa`，所以续跑这批重评时，`--run` 必须写旧路径。
@@ -57,21 +58,21 @@ ln -s /gpfs/work2/0/prjs1717/xwang/BFA_llm/regionalign/results /gpfs/work2/0/prj
 
 | `results/experiments/` 下 | 内容 | 状态 | 可加载提交 | 旧路径 |
 |---|---|---|---|---|
-| `llm_matrix/small4/plan_main/`（正式副本覆盖层在 `plan_main_triton_copies/`） | llama3.2-1b、qwen2.5-1.5b、stablelm2-1.6b、smollm2-1.7b × INT8/INT4 × MMLU/WikiText，不含下一行的两个条件 | 14 × 108/108 | `ed52753`–`83e6cbd` | `campaigns/20261112T235241_652037Z_small4_int8_baseline/plans/snellius_reuse` |
-| `llm_matrix/small4/plan_llama_qwen_int8_mmlu/` | llama3.2-1b、qwen2.5-1.5b 的 INT8 MMLU | 2 × 108/108 | `9399d68`–`d11cc3f` | 同上 `plans/snellius` |
+| `llm_matrix/small4/plan_main/`（正式副本覆盖层在 `plan_main_triton_copies/`） | llama3.2-1b、qwen2.5-1.5b、stablelm2-1.6b、smollm2-1.7b × INT8/INT4 × MMLU/WikiText，不含下一行的两个条件 | 14 × 108/108 | `ed52753`–`83e6cbd`（主线合并 Gemma 之前的 5 个提交） | `campaigns/20261112T235241_652037Z_small4_int8_baseline/plans/snellius_reuse` |
+| `llm_matrix/small4/plan_llama_qwen_int8_mmlu/` | llama3.2-1b、qwen2.5-1.5b 的 INT8 MMLU | 2 × 108/108 | `9399d68`、`d11cc3f`、`d7a8784`（分支 `injection-on-d11cc3f`） | 同上 `plans/snellius` |
 | `llm_matrix/small4/checks/` | 终检 `final_int8_check_*`、`int4_matrix_summary_20261116.md`、`CANONICAL_COPY_20261115.md`；`scripts/` 是生成它们的脚本 | | | 同上 `verification/` |
 | `llm_matrix/small4/analysis/` | `reporting/campaign_costs.py` 的汇总（`summary/`、`costs/`）；`code/` 是当时所用的 reporting 代码 | | | `campaigns/20261115T170101_892368Z_small4_int8_int4_summary` |
 | `llm_matrix/small4/{launch,stages,preflight,tools}/` | 提交脚本与日志、阶段证据、预检 | | | 同上 small4 campaign |
-| `llm_matrix/gemma/plan/` | gemma2-2b、gemma3-1b × INT8/INT4 × MMLU/WikiText | 8 × 108/108 | `0d48464`–`22688fc` | `campaigns/20261113T175625_031395Z_small_gemma_vlm_int8_baseline/plans/llm` |
+| `llm_matrix/gemma/plan/` | gemma2-2b、gemma3-1b × INT8/INT4 × MMLU/WikiText | 8 × 108/108 | 当前主线 `vqa-dev-matrix`（`f254f73` 及之后），以及 `0d48464`、`22688fc` | `campaigns/20261113T175625_031395Z_small_gemma_vlm_int8_baseline/plans/llm` |
 | `llm_matrix/gemma/{checks,diagnostics,launch,inputs,preflight,tools}/` | 终检、gemma3 logit 探针、提交脚本与日志 | | | 同上 campaign |
 
 ## vlm_matrix/ — `experiments/vqa.py`、`vqa_reeval.py`：VLM 的匹配矩阵（OK-VQA、TextVQA）
 
 | `results/experiments/` 下 | 内容 | 状态 | 可加载提交 | 旧路径 |
 |---|---|---|---|---|
-| `vlm_matrix/plan_smolvlm_qwen2.5vl/` | smolvlm-instruct、qwen2.5-vl-3b × INT8/INT4 × OK-VQA/TextVQA | 8 × 108/108 | `0d48464`–`22688fc` | `campaigns/20261113T175625_031395Z_small_gemma_vlm_int8_baseline/plans/vqa` |
+| `vlm_matrix/plan_smolvlm_qwen2.5vl/` | smolvlm-instruct、qwen2.5-vl-3b × INT8/INT4 × OK-VQA/TextVQA | 8 × 108/108 | 当前主线 `vqa-dev-matrix`（`f254f73` 及之后），以及 `0d48464`、`22688fc` | `campaigns/20261113T175625_031395Z_small_gemma_vlm_int8_baseline/plans/vqa` |
 | `vlm_matrix/plan_qwen2vl2b/` | qwen2-vl-2b × INT8/INT4 × OK-VQA/TextVQA | 4 × 108/108 | 同上 | 同上 `plans/vqa_qwen2vl2b` |
-| `vlm_matrix/int4_reeval/` | 上面 6 个 INT4 条件里因 clean 分数为 0、在汇总时崩溃的 522 份报告的重评 | 522/522 | `22688fc` | 同上 `reeval/int4_vqa_none_safe_20261116` |
+| `vlm_matrix/int4_reeval/` | 上面 6 个 INT4 条件里因 clean 分数为 0、在汇总时崩溃的 522 份报告的重评 | 522/522 | 当前主线（`22688fc` 及之后） | 同上 `reeval/int4_vqa_none_safe_20261116` |
 | `vlm_matrix/{checks,launch,inputs,preflight,tools}/` | 终检、提交脚本与日志、官方 OK-VQA 训练输入审计、预检 | | | 同上 campaign |
 
 INT4 VLM 的读法：对每个条件，`int4_reeval/<vqa 或 vqa_qwen2vl2b>/eval/<条件>/` 里有的报告用重评版，没有的用计划目录 `eval/` 里状态为 `complete` 的报告，合起来是 108 份。

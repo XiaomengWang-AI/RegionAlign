@@ -204,7 +204,7 @@ All results live in `results/experiments/`, organized by experiment code, then p
 - where its check reports are;
 - which git commit reproduces its frozen sources byte for byte.
 
-To load an old plan, check out that commit as a worktree (see `RESULTS.md`).
+The Gemma and VLM plans load on the current branch; to load any other old plan, check out its commit as a worktree (see `RESULTS.md`).
 
 ## Repository layout
 
