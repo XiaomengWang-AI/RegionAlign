@@ -22,6 +22,7 @@
 | `runtimes/vqa_score.py` | 官方 VQA 答案归一化与一致性准确率 |
 | `experiments/llm.py` | 已登记 LLM（计划可取任意非空子集）的正式开发集匹配矩阵 |
 | `experiments/vqa.py` | 已登记开发 VLM 的正式开发集匹配矩阵、官方 OK-VQA 训练输入绑定及 GPU preflight |
+| `experiments/vqa_reeval.py` | 复用冻结 VQA 计划的搜索结果，对因 clean 分数为 0 而在汇总时崩溃的评价，以不比较 None 的汇总重新评价，写入单独目录 |
 | `experiments/official_okvqa.py` | 官方训练来源的独立归档、面板选择审计与四条件 parent |
 | `experiments/clean_mmlu.py` | LLM 登记表、无故障 MMLU 量化基线、模型加载及输入/源码审计 |
 | `experiments/clean_wikitext.py` | 无故障 WikiText 开发集基线 |
@@ -48,6 +49,7 @@
 | `tests/test_region_core.py` | 通用区域、合法置换、算法接口、复用逐位一致及包自包含性测试 |
 | `tests/test_llm_region_study.py` | 正式文本矩阵、匹配重复、隔离与源码快照测试 |
 | `tests/test_vqa_region_study.py` | 正式 VQA 矩阵、输入身份与评价规则测试 |
+| `tests/test_vqa_reeval.py` | None 安全汇总与原汇总等价、只挑汇总崩溃的报告 |
 | `tests/test_official_okvqa.py` | 官方训练选择等价、来源绑定、图片失败不替换与新 parent 测试 |
 | `tests/test_matrix_vqa_runtime.py` | 多模态运行时、GQA 与视觉通道同步测试 |
 | `tests/test_vqa_cached_runtime.py` | 缓存图像特征运行时与完整模型的一致性、布局与复用测试 |
