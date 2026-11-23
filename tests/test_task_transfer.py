@@ -17,6 +17,10 @@ from regionalign.runtimes.vqa import HFVQARegionRuntime
 from regionalign.tests.helpers import TINY_GROUP, tiny_lm
 
 
+# The fixture plans name one development VLM, so counts stay fixed as the registry grows.
+PLAN_MODELS = ("qwen2-vl-2b",)
+
+
 class TinyVLM(torch.nn.Module):
     """Real language forward/generation behind the HF VQA runtime API."""
     def __init__(self, language):
@@ -78,11 +82,11 @@ class TaskTransferTests(unittest.TestCase):
                          "repository": T.V.MODEL_SPECS[model]["repository"], "revision": "fixture",
                          "dims": T.P.dims(tiny_lm()),
                          "files": [{"path": "config.json", "bytes": 2, "sha256": "a" * 64}]}
-                  for model in T.V.DEV_MODELS}
+                  for model in PLAN_MODELS}
         for manifest in models.values():
             manifest["manifest_sha256"] = T.M.object_sha256(manifest)
         conditions = []
-        for model in T.V.DEV_MODELS:
+        for model in PLAN_MODELS:
             for fmt in T.V.FORMATS:
                 language = tiny_lm()
                 T.P.quantize(language, fmt, group=TINY_GROUP)
@@ -253,10 +257,13 @@ class TaskTransferTests(unittest.TestCase):
     def test_prepare_rejects_checkpoint_geometry_protocol_and_task_mismatches(self):
         _, left = self.parent("source", "textvqa")
         _, right = self.parent("target", "okvqa")
-        for change in ("checkpoint", "geometry", "execution"):
+        for change in ("checkpoint", "geometry", "execution", "models"):
             changed = copy.deepcopy(right)
             if change == "checkpoint":
-                changed["models"][T.V.DEV_MODELS[0]]["revision"] = "different"
+                changed["models"][PLAN_MODELS[0]]["revision"] = "different"
+            elif change == "models":
+                extra = next(key for key in T.V.DEV_MODELS if key not in PLAN_MODELS)
+                changed["models"][extra] = copy.deepcopy(changed["models"][PLAN_MODELS[0]])
             elif change == "geometry":
                 changed["conditions"][0]["regions"][0]["page_index"] = "different"
             else:

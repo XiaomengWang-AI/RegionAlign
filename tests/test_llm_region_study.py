@@ -36,14 +36,18 @@ class RegionRegistrationTests(unittest.TestCase):
                     S.make_plan(Path(temporary) / "run", models, temporary, "train", "validation")
 
     def test_every_registered_model_has_legal_regions_in_every_band_and_kind(self):
-        self.assertLessEqual({"llama3.2-1b", "qwen2.5-1.5b", "stablelm2-1.6b", "smollm2-1.7b"},
-                             set(S.MODELS))
+        self.assertLessEqual({"llama3.2-1b", "qwen2.5-1.5b", "stablelm2-1.6b", "smollm2-1.7b",
+                              "gemma2-2b", "gemma3-1b"}, set(S.MODELS))
         for key, spec in S.M.MODEL_SPECS.items():
             for fmt, bits in (("int8", 8), ("int4", 4)):
                 with self.subTest(model=key, format=fmt):
                     dims = S.dims_for_format(dict(spec), fmt)
-                    self.assertEqual(dims["head_dim"] * dims["heads"], dims["hidden"])
+                    self.assertEqual(dims["head_dim"], spec.get(
+                        "head_dim", spec["hidden_size"] // spec["num_attention_heads"]))
                     regions = S.preregistered_regions(key, dims, bits)
+                    shapes = {kind: S.R.tensor_shape(kind, dims) for kind in S.REGION_KINDS}
+                    self.assertEqual(shapes["q_proj"], (dims["heads"] * dims["head_dim"],
+                                                        spec["hidden_size"]))
                     self.assertEqual(len(regions), 12)
                     self.assertEqual({(r["depth_band"], r["kind"]) for r in regions},
                                      {(band, kind) for band in S.DEPTH_BANDS

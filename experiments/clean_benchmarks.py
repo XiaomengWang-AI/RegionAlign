@@ -45,6 +45,12 @@ SOURCES = (
     "regionalign/runtime.json", "regionalign/runtimes/vqa_score.py",
 )
 VLM_TYPES = {"llava-1.5-7b": "llava", "qwen2-vl-7b": "qwen2_vl"}
+# Hugging Face class per VLM family (``config.json`` model_type).  SmolVLM uses Idefics3.
+VLM_CLASSES = {"llava": "LlavaForConditionalGeneration",
+               "qwen2_vl": "Qwen2VLForConditionalGeneration",
+               "qwen2_5_vl": "Qwen2_5_VLForConditionalGeneration",
+               "idefics3": "Idefics3ForConditionalGeneration"}
+QWEN_VL_FAMILIES = ("qwen2_vl", "qwen2_5_vl")
 SETTINGS = {
     "context": 512, "stride": 256, "join": "two_newlines", "add_special_tokens": False,
     "max_new_tokens": 32, "do_sample": False, "batch_size": 1,
@@ -228,25 +234,35 @@ def load_clean(model_key, checkpoint, fmt, device):
     if model_key in M.MODEL_SPECS:
         model, processor, audit, timing = M.load_model(checkpoint, fmt, device)
         return model, processor, model, audit, timing
-    from transformers import AutoProcessor, LlavaForConditionalGeneration, Qwen2VLForConditionalGeneration
+    import transformers
+    from transformers import AutoProcessor
     from regionalign.harness import core as P
     start = time.monotonic()
     free, _ = torch.cuda.mem_get_info(device)
     if free < SETTINGS["min_free_gpu_gib"] * 1024 ** 3:
         raise RuntimeError("clean VLM evaluation requires 40 GiB free GPU memory")
-    cls = LlavaForConditionalGeneration if model_key == "llava-1.5-7b" else Qwen2VLForConditionalGeneration
+    family = M.read_json(Path(checkpoint) / "config.json").get("model_type")
+    if family not in VLM_CLASSES:
+        raise ValueError(f"unsupported VLM family {family!r} for {model_key}")
+    cls = getattr(transformers, VLM_CLASSES[family], None)
+    if cls is None:
+        raise RuntimeError(f"transformers {transformers.__version__} lacks {VLM_CLASSES[family]}; "
+                           "use the environment of requirements-tf451.txt")
     model = cls.from_pretrained(checkpoint, local_files_only=True, torch_dtype="auto",
                                 device_map={"": device}, attn_implementation="sdpa")
     model.eval().requires_grad_(False)
-    extra = {} if model_key == "llava-1.5-7b" else {
-        "min_pixels": SETTINGS["qwen_min_pixels"], "max_pixels": SETTINGS["qwen_max_pixels"]}
+    extra = ({"min_pixels": SETTINGS["qwen_min_pixels"], "max_pixels": SETTINGS["qwen_max_pixels"]}
+             if family in QWEN_VL_FAMILIES else {})
     processor = AutoProcessor.from_pretrained(checkpoint, local_files_only=True, **extra)
-    if model_key == "llava-1.5-7b":
+    if family == "llava":
         language = model.language_model
     else:
+        # The language decoder plus head; the vision tower and projector stay outside.
         language = torch.nn.Module()
-        language.add_module("model", model.model)
+        language.add_module("model", model.model.text_model if family == "idefics3" else model.model)
         language.add_module("lm_head", model.lm_head)
+        if family == "idefics3":
+            language.config = model.config.text_config
     language_ids = {id(p) for p in language.parameters()}
     excluded = [(n, p) for n, p in model.named_parameters() if id(p) not in language_ids]
     before = [M._tensor_record(n, p) for n, p in excluded]

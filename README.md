@@ -9,22 +9,25 @@
 | 文件或目录 | 用途 |
 |---|---|
 | `AGENTS.md`、`CLAUDE.md` | 操作契约：研究假设、可改范围、自检与交叉审查 |
+| `RESULTS.md` | 实验结果索引：每个 campaign/plan 的内容、状态、核查报告与可加载提交 |
 | `config.py` | 本包自有的路径、离线环境设置和只新增的结果路径 |
 | `runtime.json` | 本机配置：`hf_home` 指向模型与数据缓存 |
 | `requirements.txt` | 本包直接依赖及实验所用版本 |
-| `harness/core.py` | 自包含内核：权重量化、合法置换、翻位与 in-range 校验、基础 Runtime 及逐位不变的前向复用 |
+| `requirements-tf451.txt` | 第二套环境（transformers 4.51.3）：Gemma-3、SmolVLM、Qwen2.5-VL；计划冻结库版本 |
+| `harness/core.py` | 自包含内核：权重量化、合法置换（含 Gemma 的 head_dim 与额外残差归一化）、翻位与 in-range 校验、基础 Runtime 及逐位不变的前向复用 |
 | `harness/region.py` | 通用区域几何、合法布局、区域校验与计算预算上下文（含重复行与层前缀复用） |
 | `harness/evidence.py` | JSON 数值清理等证据辅助函数 |
 | `algorithm/search.py` | 正式区域实验共用的搜索算法 |
 | `runtimes/text.py` | MMLU/WikiText 冻结 token 面板及正式文本目标 |
-| `runtimes/vqa.py` | LLaVA/Qwen2-VL 的训练集面板、多模态计算及评分适配 |
+| `runtimes/vqa.py` | LLaVA/Qwen2-VL/Qwen2.5-VL/SmolVLM 的训练集面板、多模态计算及评分适配；完整模型与缓存图像特征两种运行时 |
 | `runtimes/vqa_score.py` | 官方 VQA 答案归一化与一致性准确率 |
 | `experiments/llm.py` | 已登记 LLM（计划可取任意非空子集）的正式开发集匹配矩阵 |
-| `experiments/vqa.py` | LLaVA/Qwen2-VL 的正式开发集匹配矩阵及 GPU preflight |
+| `experiments/vqa.py` | 已登记开发 VLM 的正式开发集匹配矩阵、官方 OK-VQA 训练输入绑定及 GPU preflight |
+| `experiments/vqa_reeval.py` | 复用冻结 VQA 计划的搜索结果，对因 clean 分数为 0 而在汇总时崩溃的评价，以不比较 None 的汇总重新评价，写入单独目录 |
 | `experiments/official_okvqa.py` | 官方训练来源的独立归档、面板选择审计与四条件 parent |
-| `experiments/clean_mmlu.py` | 无故障 MMLU 量化基线、模型加载及输入/源码审计 |
+| `experiments/clean_mmlu.py` | LLM 登记表、无故障 MMLU 量化基线、模型加载及输入/源码审计 |
 | `experiments/clean_wikitext.py` | 无故障 WikiText 开发集基线 |
-| `experiments/clean_benchmarks.py` | 完整 WikiText/VQA 无故障最终基线及共用多模态加载器 |
+| `experiments/clean_benchmarks.py` | 完整 WikiText/VQA 无故障最终基线及按模型族选择的共用多模态加载器 |
 | `experiments/clean_memory.py` | clean 基线的独立显存策略与合成内存标定入口 |
 | `experiments/campaign_protocol.py` | 原字节继承面板的新计划、显式资源策略和独立计算预算 |
 | `experiments/campaign_variants.py` | 消融变体的冻结注册项、参考基线与开发阶段执行 |
@@ -50,8 +53,11 @@
 | `tests/test_region_core.py` | 通用区域、合法置换、算法接口、复用逐位一致及包自包含性测试 |
 | `tests/test_llm_region_study.py` | 正式文本矩阵、匹配重复、隔离与源码快照测试 |
 | `tests/test_vqa_region_study.py` | 正式 VQA 矩阵、输入身份与评价规则测试 |
+| `tests/test_vqa_reeval.py` | None 安全汇总与原汇总等价、只挑汇总崩溃的报告 |
 | `tests/test_official_okvqa.py` | 官方训练选择等价、来源绑定、图片失败不替换与新 parent 测试 |
 | `tests/test_matrix_vqa_runtime.py` | 多模态运行时、GQA 与视觉通道同步测试 |
+| `tests/test_vqa_cached_runtime.py` | 缓存图像特征运行时与完整模型的一致性、布局与复用测试 |
+| `tests/test_decoder_families.py` | Gemma 结构（显式 head_dim、额外归一化、soft-cap）的内核规则测试 |
 | `tests/test_mmlu_clean.py` | clean MMLU 评分、量化及证据协议测试 |
 | `tests/test_clean_benchmarks.py` | 最终 clean 基线、预检及逐样本完整性测试 |
 | `tests/test_clean_memory.py` | 显存策略隔离、计划身份与标定失败路径测试 |
@@ -70,39 +76,45 @@
 | `tests/test_campaign_evaluation.py` | 最终访问门槛、封存选择与后续评价身份测试 |
 | `tests/test_campaign_followups.py` | 真实小型量化运行时的跨任务独立评价测试 |
 | `tests/test_campaign_costs.py` | 搜索成本核算、缺失覆盖与匹配对照隔离测试 |
+| `tests/test_task_transfer.py` | VQA 任务迁移的独立元数据及真实小型 INT8/INT4 运行时检查 |
+| `tests/test_checkpoint_transfer.py` | 用不同的小 checkpoint 和真实评价器测试同一性迁移 |
 | `tests/test_wikitext_clean_dev.py` | 开发集文本隔离与 token 加权测试 |
 | `tests/test_config.py` | 输出边界、离线环境、拒绝覆盖及下载范围测试 |
-| `results/` | 分离前产生的结果、运行计划、日志与迁移审计；只新增，不进版本库 |
+| `results/` | 全部实验计划、结果、日志与迁移审计；只新增，不进版本库；索引见 `RESULTS.md` |
 | `.claude/review-loop/` | Codex 只读交叉审查脚本 |
 
 包初始化不启动实验。本包自包含：不导入包外代码，唯一的外部输入是 `runtime.json` 里 `hf_home` 指向的缓存。
-命令在包的上一级目录以 `python -m regionalign...` 运行；依赖见 `requirements.txt`。
+命令在包的上一级目录以 `python -m regionalign...` 运行；依赖见 `requirements.txt`，Gemma-3、SmolVLM、Qwen2.5-VL 用 `requirements-tf451.txt` 的环境。
 
-## 数据与结果导航
+## 按用途找代码
 
-| 结果分组 | 内容 |
-|---|---|
-| `results/llm_region_study/` | 正式 LLM 开发矩阵的冻结计划与后续产物 |
-| `results/vqa_region_study/` | 正式 VQA 开发矩阵；缺失 train 输入的条件仍显式保留 |
-| `results/mmlu_clean/` | clean MMLU 条件结果与汇总 |
-| `results/experimental_matrix/` | 输入审计、WikiText clean 结果及早期 clean 汇总 |
-| `results/clean_benchmark_submissions/` | 完整 clean 基线、失败保留及重试计划 |
-| `results/clean_evaluation/` | 输入与执行准备的证据 |
-| `results/campaigns/` | 冻结计划注册表、执行队列、阶段证据、后续评价与独立资源轮次 |
-| `results/nohup_launches/` | 运行启动脚本、登记和日志；日志不是完成结果 |
-| `results/migration/` | 旧新路径映射、逐文件 SHA256、暂停记录和迁移核验 |
+| 我要…… | 入口模块 | 子命令 / 说明 |
+|---|---|---|
+| 跑 LLM 的 noperm/local/random 矩阵（MMLU、WikiText） | `experiments/llm.py` | `plan` → `preflight` → `search` → `evaluate`，用 `status` 查进度 |
+| 跑 VLM 矩阵（OK-VQA、TextVQA） | `experiments/vqa.py` | 同上；`evaluate` 之前必须先在真实 GPU 上跑 `preflight` |
+| 重评因 clean 分数为 0 而汇总崩溃的 VQA 报告 | `experiments/vqa_reeval.py` | 先 `init` 建一个新的输出目录，再按分片 `run` |
+| 在冻结布局上测单次随机注入的 ASR | `experiments/llm_injection_trace.py`（新实验用它） | `prepare --source-run <LLM 计划> --law uniform\|highbias --regions '<JSON>'`，再 `run`；`llm_injection.py`、`llm_injection_biased.py` 是它复用的基础评价器 |
+| 只要无故障（clean）基线 | `experiments/clean_mmlu.py`、`clean_wikitext.py`、`clean_benchmarks.py` | |
+| 下载或审计模型与数据 | `experiments/input_audit.py` | |
+| 汇总成本、损伤和匹配对照 | `reporting/campaign_costs.py` | |
+| 改搜索算法 / 量化与翻位规则 / 区域几何 | `algorithm/search.py` / `harness/core.py` / `harness/region.py` | 这几处一改，全部旧计划都不能再加载，改前先读 `AGENTS.md` |
 
-各 run 的 `plan.json` 登记协议；`source/` 或 `sources/` 保存当时的源码；`artifacts/` 保存搜索产物；`eval/` 保存独立评价；存在的 `summary.json` 保存汇总。
-目录或计划存在不表示实验完成；判断以注册项覆盖和有效报告为准。
+环境：Llama、Qwen2.5、StableLM2、SmolLM2、Gemma-2 用 `requirements.txt`；Gemma-3、SmolVLM、Qwen2.5-VL、Qwen2-VL 用 `requirements-tf451.txt`（Snellius 上是 `/projects/prjs1717/xwang/env/bfa_tf451`）。
+Slurm 提交脚本的现成模板在各 campaign 的 `launch/snellius/*.sbatch` 里（每个 GPU 跑 PACK 个分片，先 search 后 evaluate）。
+
+## 结果在哪
+
+**`RESULTS.md` 是结果索引**：每个 campaign 和 plan 是什么、完成到哪一步、核查报告在哪，以及要用哪个 git 提交才能原样加载（plan 冻结了源码 sha256）。
+每个 plan 目录里，`plan.json` 登记协议，`source/` 存当时的源码快照，`artifacts/` 存搜索产物，`eval/` 存独立评价，`inject/` 存注入结果。
+目录或计划存在，不表示实验已经完成；以注册项的覆盖和有效报告为准。
 
 ## 保留边界与历史版本
 
 - 本包于 2026-11-11 从 `layout_alignment_attack` 仓库分离。内核、路径配置和 VQA 评分已收进包内；内核只保留 in-range 一条数值规则，其余定义逐字未改。
 - 那个仓库研究的是另一个假设（可翻单元图与受限轨道）。它的代码、文档与编号都不属于本包，本包不导入也不引用。
-- `results/` 里的 run 都产生于分离之前，绑定当时的源码身份和旧路径。它们的 `plan.json`、源码快照、哈希、输入、日志和指标原样保留。
-- 旧计划不能续跑，也不能通过重写哈希继续使用；新代码须生成新计划。
+- 分离之前产生的 run 原样保留为证据，不能续跑，也不能通过改写哈希来续用。
+- 分离之后的每个 plan 绑定生成时的源码身份：只能在 `RESULTS.md` 列出的对应提交上加载，不能改用新代码；新代码要生成新计划。
 - 保留 run 的历史源码快照可能带有当时的包外依赖；这些快照作为证据原字节保留，不作为当前实验入口。
-- `results/migration/` 记录的是更早一次（2026-11-10）结果搬迁与单 bit 枚举结果删除，与本次分离无关。
 - 最终 test 访问追加到 `results/test_access.jsonl`。
 
 ## 验证与阅读顺序

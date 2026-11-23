@@ -158,6 +158,7 @@ def load_plan(run):
         raise ValueError("unsupported LLM RegionAlign plan")
     if not plan.get("development_only") or "test" in plan.get("splits", []):
         raise ValueError("the formal development plan must not contain a test split")
+    M.check_library_versions(plan.get("environment"))
     _assert_frozen(run, plan)
     plan["sha256"] = plan_sha256
     return run, plan
@@ -496,7 +497,7 @@ def make_plan(run, models, hf_home, wikitext_train, wikitext_validation,
         "mmlu_score_gate": MMLU_SCORE_GATE,
         "work_items_per_condition": (len(DEPTH_BANDS) * REGIONS_PER_BAND
                                      * len(REPEAT_SEEDS) * len(ARMS)),
-        "sources": sources, "note": note,
+        "sources": sources, "note": note, "environment": M.library_versions(),
         "claim_boundary": "offline software fault simulation; no physical fault validation",
     }
     live = {record["path"]: M.sha256(C.PROJECT / record["path"]) for record in sources}
