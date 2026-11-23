@@ -121,7 +121,7 @@ checkpoint revisions and dataset files recorded in the `models` and `datasets` f
 OK-VQA has no training split on the Hub. Build the audited official train inputs once:
 
 ```bash
-python -m regionalign.experiments.official_okvqa prepare-inputs --output regionalign/results/okvqa_official_inputs
+python -m regionalign.experiments.official_okvqa prepare-inputs --output regionalign/results/experiments/okvqa_official_inputs
 ```
 
 ## 4. Run a matched LLM experiment
@@ -134,10 +134,10 @@ python -m regionalign.experiments.llm plan \
   --model qwen2.5-1.5b=$REGIONALIGN_HF_HOME/hub/models--Qwen--Qwen2.5-1.5B/snapshots/<rev> \
   --wikitext-train      $REGIONALIGN_HF_HOME/datasets/wikitext/.../wikitext-train.arrow \
   --wikitext-validation $REGIONALIGN_HF_HOME/datasets/wikitext/.../wikitext-validation.arrow \
-  --output regionalign/results/campaigns/my_run/plans/llm
+  --output regionalign/results/experiments/my_run/plans/llm
 # -> prints the run directory; plan.json lists the conditions, e.g. qwen2.5-1.5b__int8__mmlu
 
-RUN=regionalign/results/campaigns/my_run/plans/llm
+RUN=regionalign/results/experiments/my_run/plans/llm
 COND=qwen2.5-1.5b__int8__mmlu
 
 # 4b. Search, then independent evaluation. Split the work into 36 shards (one per region × repeat;
@@ -165,7 +165,7 @@ A small 1–2 B model takes about 20–60 GPU-minutes per shard on an A100/H100.
 `preflight --run $RUN --condition $COND` before `search`/`evaluate`. The plan takes:
 - `--model smolvlm-instruct=/path`;
 - `--textvqa-train <arrow files>`;
-- `--okvqa-official regionalign/results/okvqa_official_inputs`.
+- `--okvqa-official regionalign/results/experiments/okvqa_official_inputs`.
 
 Use environment B for SmolVLM and Qwen2.5-VL.
 
@@ -175,9 +175,9 @@ Use environment B for SmolVLM and Qwen2.5-VL.
 python -m regionalign.experiments.llm_injection_trace prepare \
   --source-run $RUN --law uniform \
   --regions '[{"condition": "qwen2.5-1.5b__int8__mmlu", "region": "L08.v_proj.p7"}]' \
-  --output regionalign/results/campaigns/my_run/inject_uniform
+  --output regionalign/results/experiments/my_run/inject_uniform
 python -m regionalign.experiments.llm_injection_trace run \
-  --run regionalign/results/campaigns/my_run/inject_uniform --condition qwen2.5-1.5b__int8__mmlu
+  --run regionalign/results/experiments/my_run/inject_uniform --condition qwen2.5-1.5b__int8__mmlu
 ```
 
 `--law highbias` weights each bit by 2^index (sign and high bits first). The default is 200 trials per layout at K = 1 and 16.
@@ -198,7 +198,8 @@ Clean-baseline tables come from `reporting/mmlu.py` and `reporting/clean_matrix.
 ## Results of this project
 
 The experiment outputs are not in this repository: `results/` is append-only and not version-controlled.
-`RESULTS.md` indexes every campaign that was run. For each one it lists:
+All results live in `results/experiments/`, organized by experiment code, then plan, then condition; `results/campaigns/` and the other old top-level names are read-only symlink aliases kept so that paths recorded in frozen plans and logs still resolve.
+`RESULTS.md` indexes every experiment and plan. For each one it lists:
 - what it ran and its status;
 - where its check reports are;
 - which git commit reproduces its frozen sources byte for byte.
@@ -247,6 +248,6 @@ To load an old plan, check out that commit as a worktree (see `RESULTS.md`).
 | `tests/test_campaign_*.py`, `test_bounded_checksum.py`, `test_nohup_campaign.py`, `test_timeout_recovery.py`, `test_layout_validation.py` | Campaign tooling: inheritance, variants, stages, checksums, queueing, recovery, final-access gate, costs |
 | `tests/test_task_transfer.py`, `test_checkpoint_transfer.py` | Transfer evaluations on tiny real runtimes |
 | `tests/test_config.py` | Output boundaries, offline environment, refusal to overwrite, download scope |
-| `results/` | Outputs (append-only, not in git) |
+| `results/` | Outputs (append-only, not in git); data in `results/experiments/`, old paths are aliases |
 
 Module docstrings are the authoritative description of each implementation.

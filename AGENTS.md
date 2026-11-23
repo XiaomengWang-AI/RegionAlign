@@ -44,7 +44,7 @@
 | **LIVE** | `regionalign/` 下除 `results/` 外的全部代码与文档 | 可改。改完必须跑第 4 节自检，并过第 6 节的交叉审查 |
 | **APPEND-ONLY** | `results/` | 只新增，禁止覆盖、改写或复用已有 run 目录；不进版本库 |
 
-`RESULTS.md` 列出每个 campaign、它的状态和能原样加载它的 git 提交。`results/` 里分离之前产生的 run 绑定当时的源码身份和旧路径。它们作为证据原样保留，**不能续跑，也不能通过改写哈希来续用**；新代码必须生成新计划。
+`RESULTS.md` 列出每个实验与计划、它的状态和能原样加载它的 git 提交。结果都在 `results/experiments/`；`results/campaigns/` 等只是指向它的旧路径别名，新实验不要写进去。`results/` 里分离之前产生的 run 绑定当时的源码身份和旧路径。它们作为证据原样保留，**不能续跑，也不能通过改写哈希来续用**；新代码必须生成新计划。
 新计划用 `campaign_memory prepare` 从冻结的父计划分叉：面板逐字节继承，区域和重复种子原样沿用，只换源码身份。
 `experiments/official_okvqa.py` 的字节被已保存的官方 OK-VQA 输入审计绑定；改动它会使这批输入失效。
 
