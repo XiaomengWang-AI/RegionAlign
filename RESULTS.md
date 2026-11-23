@@ -7,20 +7,34 @@
 
 - 下文路径都相对于 `results/`；“主结果”和“注入 ASR”两张表里的目录都在 `results/campaigns/` 下。一个 **campaign** 目录 = 一次实验活动；里面的 **plan** 目录（含 `plan.json`）才是可执行单元。
 - **plan 冻结源码。** `plan.json.sources` 记录每个源码文件的 sha256，代码一变就拒绝加载。
-  表中所有 campaign 都产生于 2026-11-11 包分离之后（分离之前的 run 已不在本目录）。“可加载提交”是源码与该 plan 逐字节一致的 git 提交；要续跑或重评，就在该提交的 worktree 里以 `PYTHONPATH=<worktree 上一级>` 运行。
+  表中所有 campaign 都产生于 2026-11-11 包分离之后（分离之前的 run 已不在本目录）。“可加载提交”是源码与该 plan 逐字节一致的 git 提交；要续跑或重评，按下一节在该提交的工作树里运行。
 - 文件约定：
   - `artifacts/<条件>/` 是搜索产物，`eval/<条件>/` 是评价报告。每个条件 108 份 = 12 区域 × 3 重复 × 3 布局。
   - `inject/<条件>/` 是注入 ASR 结果。
   - `launch/` 放 sbatch 与日志，`verification/` 放核查报告。
 - **条件 id** 的格式是 `模型__格式__任务`，例如 `qwen2.5-1.5b__int8__mmlu`。
 
-## 代码版本（git 分支 / worktree）
+## 代码版本（git 分支）
 
-| 分支 | worktree | 内容 |
-|---|---|---|
-| `vqa-dev-matrix` | `BFA_llm/regionalign` | 当前主线：合并了全部代码，包括 Gemma/VLM、三种注入评价器和 `vqa_reeval`。新实验用它 |
-| `small-gemma-vlm-int8` | `BFA_llm_vlm/regionalign` | Gemma/VLM 计划的冻结源码（`0d48464`），另加 `vqa_reeval`（`22688fc`） |
-| `injection-on-d11cc3f` | `BFA_llm_inj_d11/regionalign` | `d11cc3f` 加三个注入评价器（`d7a8784`），供 llama/qwen MMLU trace 计划使用 |
+现在只有一个目录 `BFA_llm/regionalign`，当前分支是 `vqa-dev-matrix`。旧计划冻结的源码都保存在 git 分支里（也已推到 GitHub）：
+
+| 分支 | 内容 |
+|---|---|
+| `vqa-dev-matrix` | 当前主线：合并了全部代码，包括 Gemma/VLM、三种注入评价器和 `vqa_reeval`。新实验用它 |
+| `small-gemma-vlm-int8` | Gemma/VLM 计划的冻结源码（`0d48464`），另加 `vqa_reeval`（`22688fc`） |
+| `injection-on-d11cc3f` | `d11cc3f` 加三个注入评价器（`d7a8784`），供 llama/qwen MMLU trace 计划使用 |
+
+要加载一个旧计划（续跑或重评），先把它的可加载提交检出成临时工作树，并把 `results` 链接回主目录。
+旧的 `launch/*.sbatch` 写死了原来的路径，所以建议用原路径重建：
+
+```bash
+cd /gpfs/work2/0/prjs1717/xwang/BFA_llm/regionalign
+git worktree add /gpfs/work2/0/prjs1717/xwang/BFA_llm_vlm/regionalign small-gemma-vlm-int8   # 或 injection-on-d11cc3f、或某个提交号
+ln -s /gpfs/work2/0/prjs1717/xwang/BFA_llm/regionalign/results /gpfs/work2/0/prjs1717/xwang/BFA_llm_vlm/regionalign/results
+# 运行时 PYTHONPATH=/gpfs/work2/0/prjs1717/xwang/BFA_llm_vlm；用完 git worktree remove 即可
+```
+
+原先的 `BFA_llm_vlm/regionalign` 用 `small-gemma-vlm-int8`，`BFA_llm_inj_d11/regionalign` 用 `injection-on-d11cc3f`。
 
 ## 主结果（论文用）
 
@@ -71,3 +85,7 @@
 | `trace_mmlu_to_triton_20261115/` | 推给 Triton 的 trace 代码；那批作业后来在 Snellius 上完成 |
 | `triton_inventory_20261123/` | 2026-11-23 的 Triton 清单（代码 sha256、全部结果文件、作业）。比对结论：Triton 上的结果 Snellius 都有 |
 | `triton_tools_20261123/` | Triton 独有的两份工具文件存档（`ARCHIVE.md`） |
+
+## 归并存档（`archive_20261123/`）
+
+2026-11-23 归并成一个目录时，从包外移进来的东西：包分离时的自检日志、第一版 qwen 计划（`transfer_in/qwen_delivery`）、small4 汇总所用的 reporting 代码快照（不在 git 里，sha256 与 `merge_provenance.json` 一致）以及 VLM 工作树的审查记录。详见该目录的 `README.md`。
