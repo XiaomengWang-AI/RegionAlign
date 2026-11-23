@@ -1,130 +1,252 @@
 # RegionAlign
 
-本目录维护预定区域下的布局对准研究：同一模型、任务、4 KiB 区域、翻位预算和搜索预算下，比较 `local`、`noperm` 与 `random`。
-攻击者只先拿到区域：区域内任意存储位都可翻、方向不限，没有可翻单元图。
-合法重排必须先通过 clean gate；故障损伤相对于同一重排布局的无故障模型计算。
+RegionAlign is a self-contained Python package that tests one research hypothesis about bit-flip
+attacks (BFA) on quantized language and vision-language models:
 
-## 目录与文件用途
+> When an attacker first obtains only **one pre-registered 4 KiB page of a layer's quantized weight
+> storage**, can a **function-preserving weight re-layout chosen by the attacker** make bit flips
+> inside that page more damaging than the original layout or a random legal layout?
 
-| 文件或目录 | 用途 |
+Everything is a **matched comparison**. For the same model, task, quantization format, region,
+flip budget and search budget, three layouts are attacked:
+
+| layout | meaning |
 |---|---|
-| `AGENTS.md`、`CLAUDE.md` | 操作契约：研究假设、可改范围、自检与交叉审查 |
-| `RESULTS.md` | 实验结果索引：每个 campaign/plan 的内容、状态、核查报告与可加载提交 |
-| `config.py` | 本包自有的路径、离线环境设置和只新增的结果路径 |
-| `runtime.json` | 本机配置：`hf_home` 指向模型与数据缓存 |
-| `requirements.txt` | 本包直接依赖及实验所用版本 |
-| `requirements-tf451.txt` | 第二套环境（transformers 4.51.3）：Gemma-3、SmolVLM、Qwen2.5-VL；计划冻结库版本 |
-| `harness/core.py` | 自包含内核：权重量化、合法置换（含 Gemma 的 head_dim 与额外残差归一化）、翻位与 in-range 校验、基础 Runtime 及逐位不变的前向复用 |
-| `harness/region.py` | 通用区域几何、合法布局、区域校验与计算预算上下文（含重复行与层前缀复用） |
-| `harness/evidence.py` | JSON 数值清理等证据辅助函数 |
-| `algorithm/search.py` | 正式区域实验共用的搜索算法 |
-| `runtimes/text.py` | MMLU/WikiText 冻结 token 面板及正式文本目标 |
-| `runtimes/vqa.py` | LLaVA/Qwen2-VL/Qwen2.5-VL/SmolVLM 的训练集面板、多模态计算及评分适配；完整模型与缓存图像特征两种运行时 |
-| `runtimes/vqa_score.py` | 官方 VQA 答案归一化与一致性准确率 |
-| `experiments/llm.py` | 已登记 LLM（计划可取任意非空子集）的正式开发集匹配矩阵 |
-| `experiments/vqa.py` | 已登记开发 VLM 的正式开发集匹配矩阵、官方 OK-VQA 训练输入绑定及 GPU preflight |
-| `experiments/vqa_reeval.py` | 复用冻结 VQA 计划的搜索结果，对因 clean 分数为 0 而在汇总时崩溃的评价，以不比较 None 的汇总重新评价，写入单独目录 |
-| `experiments/official_okvqa.py` | 官方训练来源的独立归档、面板选择审计与四条件 parent |
-| `experiments/clean_mmlu.py` | LLM 登记表、无故障 MMLU 量化基线、模型加载及输入/源码审计 |
-| `experiments/clean_wikitext.py` | 无故障 WikiText 开发集基线 |
-| `experiments/clean_benchmarks.py` | 完整 WikiText/VQA 无故障最终基线及按模型族选择的共用多模态加载器 |
-| `experiments/clean_memory.py` | clean 基线的独立显存策略与合成内存标定入口 |
-| `experiments/campaign_protocol.py` | 原字节继承面板的新计划、显式资源策略和独立计算预算 |
-| `experiments/campaign_variants.py` | 消融变体的冻结注册项、参考基线与开发阶段执行 |
-| `experiments/campaign_stage.py` | 阶段注册覆盖核验与独立完成标识 |
-| `experiments/bounded_checksum.py` | 保持整数指纹值的分块内存实现 |
-| `experiments/campaign_memory.py` | 分块指纹实现的独立计划身份与执行包装 |
-| `experiments/layout_validation.py` | 真实权重的无故障布局等价性与独立梯度资源资格检查 |
-| `experiments/nohup_campaign.py` | 冻结队列的依赖调度、Slurm 分配、nohup 和逐次执行证据 |
-| `experiments/campaign_watch.py` | 等待外部完成证据时的队列守候与恢复 |
-| `experiments/timeout_recovery.py` | 有明确 Slurm 时限证据的主队列有限续跑 |
-| `experiments/campaign_evaluation.py` | 全部开发产物封存后的最终与跨任务独立评价 |
-| `experiments/llm_injection.py` | 冻结 LLM 布局的单次注入 ASR 评价（区域内随机故障、冻结故障法则）|
-| `experiments/llm_injection_biased.py` | 同上，但故障法则按位的位值 2^b 加权偏向符号/高位（每位仍有正概率，不排除任何位）；独立 scope 与计划，复用其无关法则的逻辑 |
-| `experiments/llm_injection_trace.py` | 与上两者完全同威胁模型/故障法则/成功判据，仅额外逐 trial 记录 ΔNLL、保留翻位数与类别（供损伤超越曲线 Fig. B）；法则由 plan 字段 `fault_law_kind`（uniform/highbias）选择，独立 scope，复用两基座评价器的无关法则辅助函数，不改其字节 |
-| `experiments/task_transfer.py` | 两份独立 VQA 开发计划之间的双向任务迁移评价 |
-| `experiments/checkpoint_transfer.py` | 同架构 checkpoint 之间的独立迁移评价 |
-| `experiments/input_audit.py` | 模型/数据缓存审计及显式输入下载（含全部已登记 LLM，可固定 Hub 版本） |
-| `reporting/mmlu.py` | 完整 clean MMLU 结果的表格、图与校验 |
-| `reporting/clean_matrix.py` | 已有 clean 矩阵汇总；不代替正式 RegionAlign 的状态检查 |
-| `reporting/campaign_costs.py` | 冻结注册矩阵的搜索成本、开发损伤、匹配对照与覆盖汇总 |
-| `tests/helpers.py` | 测试共用的小型随机模型与 Runtime 夹具 |
-| `tests/test_core.py` | 内核测试：翻位可逆、置换保函数与保码（含 LayerNorm 解码器）、量化完整、in-range 规则 |
-| `tests/test_region_core.py` | 通用区域、合法置换、算法接口、复用逐位一致及包自包含性测试 |
-| `tests/test_llm_region_study.py` | 正式文本矩阵、匹配重复、隔离与源码快照测试 |
-| `tests/test_vqa_region_study.py` | 正式 VQA 矩阵、输入身份与评价规则测试 |
-| `tests/test_vqa_reeval.py` | None 安全汇总与原汇总等价、只挑汇总崩溃的报告 |
-| `tests/test_official_okvqa.py` | 官方训练选择等价、来源绑定、图片失败不替换与新 parent 测试 |
-| `tests/test_matrix_vqa_runtime.py` | 多模态运行时、GQA 与视觉通道同步测试 |
-| `tests/test_vqa_cached_runtime.py` | 缓存图像特征运行时与完整模型的一致性、布局与复用测试 |
-| `tests/test_decoder_families.py` | Gemma 结构（显式 head_dim、额外归一化、soft-cap）的内核规则测试 |
-| `tests/test_mmlu_clean.py` | clean MMLU 评分、量化及证据协议测试 |
-| `tests/test_clean_benchmarks.py` | 最终 clean 基线、预检及逐样本完整性测试 |
-| `tests/test_clean_memory.py` | 显存策略隔离、计划身份与标定失败路径测试 |
-| `tests/test_campaign_protocol.py` | 开发计划继承、独立预算与资源策略测试 |
-| `tests/test_campaign_variants.py` | 消融注册范围、参考基线及变体身份测试 |
-| `tests/test_campaign_stage.py` | 多文件阶段覆盖、证据绑定与恢复测试 |
-| `tests/test_bounded_checksum.py` | 分块整数指纹等值性与临时内存边界测试 |
-| `tests/test_campaign_memory.py` | 分块执行策略的源码冻结和包装测试 |
-| `tests/test_layout_validation.py` | 布局等价性与资格结果状态测试 |
-| `tests/test_llm_injection.py` | 注入 ASR 故障采样、成功判据、计划哈希与分片命名测试 |
-| `tests/test_llm_injection_biased.py` | 偏置故障法则的高位采样、per-element 丢弃不变量与独立协议常量测试 |
-| `tests/test_llm_injection_trace.py` | trace 评价器的法则映射、逐 trial 分类与基座一致、独立 scope 及源码快照测试 |
-| `tests/test_nohup_campaign.py` | 队列依赖、资源分配、锁与失败恢复测试 |
-| `tests/test_campaign_watch.py` | 队列守候、锁与外部证据到达测试 |
-| `tests/test_timeout_recovery.py` | 调度超时证据、恢复次数与原阶段续跑测试 |
-| `tests/test_campaign_evaluation.py` | 最终访问门槛、封存选择与后续评价身份测试 |
-| `tests/test_campaign_followups.py` | 真实小型量化运行时的跨任务独立评价测试 |
-| `tests/test_campaign_costs.py` | 搜索成本核算、缺失覆盖与匹配对照隔离测试 |
-| `tests/test_task_transfer.py` | VQA 任务迁移的独立元数据及真实小型 INT8/INT4 运行时检查 |
-| `tests/test_checkpoint_transfer.py` | 用不同的小 checkpoint 和真实评价器测试同一性迁移 |
-| `tests/test_wikitext_clean_dev.py` | 开发集文本隔离与 token 加权测试 |
-| `tests/test_config.py` | 输出边界、离线环境、拒绝覆盖及下载范围测试 |
-| `results/` | 全部实验计划、结果、日志与迁移审计；只新增，不进版本库；索引见 `RESULTS.md` |
-| `.claude/review-loop/` | Codex 只读交叉审查脚本 |
+| `noperm` | the original weight layout |
+| `local` | an attacker-chosen, function-equivalent permutation (RegionAlign) |
+| `random` | a seed-determined random legal permutation the attacker cannot choose |
 
-包初始化不启动实验。本包自包含：不导入包外代码，唯一的外部输入是 `runtime.json` 里 `hf_home` 指向的缓存。
-命令在包的上一级目录以 `python -m regionalign...` 运行；依赖见 `requirements.txt`，Gemma-3、SmolVLM、Qwen2.5-VL 用 `requirements-tf451.txt` 的环境。
+The threat model has a single constraint: the region.
+- **Region:** an aligned 4 KiB page of one decoder `Linear` weight's INT8/INT4 codes, registered before search.
+- **Flips:** any stored bit inside the page may flip, in either direction.
+- **Numeric rule (in-range):** a flipped weight must stay finite and within the row's clean max-abs value.
 
-## 按用途找代码
+**Rearranging comes first:** a re-arranged model must first pass a *clean gate*, meaning it behaves like the original model before any fault. Fault damage is then measured against the same re-arranged model without faults.
 
-| 我要…… | 入口模块 | 子命令 / 说明 |
-|---|---|---|
-| 跑 LLM 的 noperm/local/random 矩阵（MMLU、WikiText） | `experiments/llm.py` | `plan` → `preflight` → `search` → `evaluate`，用 `status` 查进度 |
-| 跑 VLM 矩阵（OK-VQA、TextVQA） | `experiments/vqa.py` | 同上；`evaluate` 之前必须先在真实 GPU 上跑 `preflight` |
-| 重评因 clean 分数为 0 而汇总崩溃的 VQA 报告 | `experiments/vqa_reeval.py` | 先 `init` 建一个新的输出目录，再按分片 `run` |
-| 在冻结布局上测单次随机注入的 ASR | `experiments/llm_injection_trace.py`（新实验用它） | `prepare --source-run <LLM 计划> --law uniform\|highbias --regions '<JSON>'`，再 `run`；`llm_injection.py`、`llm_injection_biased.py` 是它复用的基础评价器 |
-| 只要无故障（clean）基线 | `experiments/clean_mmlu.py`、`clean_wikitext.py`、`clean_benchmarks.py` | |
-| 下载或审计模型与数据 | `experiments/input_audit.py` | |
-| 汇总成本、损伤和匹配对照 | `reporting/campaign_costs.py` | |
-| 改搜索算法 / 量化与翻位规则 / 区域几何 | `algorithm/search.py` / `harness/core.py` / `harness/region.py` | 这几处一改，全部旧计划都不能再加载，改前先读 `AGENTS.md` |
+This is an **offline software fault simulation**. It is not a physical DRAM/Rowhammer
+measurement, and a finite search that finds no attack does not prove a model is safe.
 
-环境：Llama、Qwen2.5、StableLM2、SmolLM2、Gemma-2 用 `requirements.txt`；Gemma-3、SmolVLM、Qwen2.5-VL、Qwen2-VL 用 `requirements-tf451.txt`（Snellius 上是 `/projects/prjs1717/xwang/env/bfa_tf451`）。
-Slurm 提交脚本的现成模板在各 campaign 的 `launch/snellius/*.sbatch` 里（每个 GPU 跑 PACK 个分片，先 search 后 evaluate）。
+## What the package does
 
-## 结果在哪
+1. **Quantize** a Hugging Face checkpoint so that *all* language-model parameters are INT8 or INT4. This includes embeddings, `lm_head`, norm gains and biases.
+2. **Freeze a plan** for an experiment matrix:
+   - models × formats × tasks;
+   - 12 registered regions per condition, spread over early, middle and late layers and over different projection kinds;
+   - 3 repeat seeds, 3 layouts, search budget 300, flip budgets K = 1–16.
 
-**`RESULTS.md` 是结果索引**：每个 campaign 和 plan 是什么、完成到哪一步、核查报告在哪，以及要用哪个 git 提交才能原样加载（plan 冻结了源码 sha256）。
-每个 plan 目录里，`plan.json` 登记协议，`source/` 存当时的源码快照，`artifacts/` 存搜索产物，`eval/` 存独立评价，`inject/` 存注入结果。
-目录或计划存在，不表示实验已经完成；以注册项的覆盖和有效报告为准。
+   The plan snapshots the source code (sha256), inputs and panels, and refuses to run if any of them changes.
+3. **Search** (`algorithm/search.py`): for each region and layout, find the most damaging in-range flip set at every K, on a frozen *search* panel.
+4. **Evaluate** independently on a separate frozen *dev* panel. The evaluator alone decides legality (`harness/region.py: check_region_attack`). Results are written for K = 1, 2, 4, 8, 16. The success rules are:
+   - **MMLU:** accuracy drops by ≥ 50 % relative to the same layout without faults;
+   - **WikiText:** perplexity at least doubles;
+   - **OK-VQA / TextVQA:** VQA score drops by ≥ 50 %.
+5. **Injection ASR** (optional): on frozen layouts, measure how often *random* single-region faults succeed (uniform or high-bit-biased fault law), with per-trial ΔNLL traces.
+6. **Report**: cost, damage and matched-comparison summaries (`reporting/`).
 
-## 保留边界与历史版本
+Registered models:
+- **LLMs:** Llama-3.2-1B, Qwen2.5-1.5B, StableLM-2-1.6B, SmolLM2-1.7B, Gemma-2-2B, Gemma-3-1B (plus the larger Llama-2-7B, Llama-3.1-8B, Qwen2.5-7B).
+- **VLMs:** SmolVLM-Instruct, Qwen2-VL-2B, Qwen2.5-VL-3B (plus LLaVA-1.5-7B, Qwen2-VL-7B).
 
-- 本包于 2026-11-11 从 `layout_alignment_attack` 仓库分离。内核、路径配置和 VQA 评分已收进包内；内核只保留 in-range 一条数值规则，其余定义逐字未改。
-- 那个仓库研究的是另一个假设（可翻单元图与受限轨道）。它的代码、文档与编号都不属于本包，本包不导入也不引用。
-- 分离之前产生的 run 原样保留为证据，不能续跑，也不能通过改写哈希来续用。
-- 分离之后的每个 plan 绑定生成时的源码身份：只能在 `RESULTS.md` 列出的对应提交上加载，不能改用新代码；新代码要生成新计划。
-- 保留 run 的历史源码快照可能带有当时的包外依赖；这些快照作为证据原字节保留，不作为当前实验入口。
-- 最终 test 访问追加到 `results/test_access.jsonl`。
+Tasks: MMLU, WikiText-2, OK-VQA and TextVQA.
 
-## 验证与阅读顺序
+## 1. Install
 
-先读 `AGENTS.md`，再读 `harness/core.py`、`harness/region.py`、所用 Runtime、`algorithm/search.py` 和对应 experiment；实现细节以各模块 docstring 为准。
-
-在包的上一级目录运行 CPU 回归：
+Requirements:
+- Linux with an NVIDIA GPU (search and evaluation need CUDA; tests run on CPU);
+- Python 3.10;
+- about 60 GB of disk for the small models and datasets.
 
 ```bash
-OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python -B -m unittest discover -s regionalign/tests -t . -v
+mkdir work && cd work
+# The package directory must be named "regionalign"; all commands run from its parent.
+git clone https://github.com/XiaomengWang-AI/RegionAlign.git regionalign
+
+# Environment A: Llama, Qwen2.5, StableLM-2, SmolLM2, Gemma-2, LLaVA, Qwen2-VL
+python3.10 -m venv envA && source envA/bin/activate
+pip install -r regionalign/requirements.txt          # install torch==2.4.1 with the CUDA build for your GPU
+deactivate
+
+# Environment B: also Gemma-3, SmolVLM and Qwen2.5-VL (newer Transformers); runs every model
+python3.10 -m venv envB && source envB/bin/activate
+pip install -r regionalign/requirements-tf451.txt
 ```
 
-操作要求与证据约束以本目录 `AGENTS.md` 为准。
+Every plan records the library versions it was made with and refuses to run under others. Use one environment per plan.
+
+Point the package at a model and data cache. The walkthrough below uses this variable in its commands, so export it in every shell
+(it overrides the `"hf_home"` key in `regionalign/runtime.json`):
+
+```bash
+export REGIONALIGN_HF_HOME=/path/to/huggingface_cache
+```
+
+At run time the package sets Hugging Face to offline mode, so download all inputs first (step 3).
+
+## 2. Check the installation (CPU, about 15 min)
+
+```bash
+OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python -B -m unittest discover -s regionalign/tests -t .
+```
+
+**Expected:** `OK`, with about 377 tests and no failures.
+The tests use tiny random models. They cover several properties:
+- flips are reversible;
+- permutations preserve both function and the stored codes;
+- quantization is complete and the in-range rule holds;
+- plans are frozen and sharding is matched;
+- the package is self-contained.
+
+## 3. Download models and datasets
+
+```bash
+# LLM checkpoints: llama3.2-1b, qwen2.5-1.5b, stablelm2-1.6b, smollm2-1.7b, gemma2-2b, gemma3-1b, ...
+python -m regionalign.experiments.input_audit download --model qwen2.5-1.5b      # repeat per model
+python -m regionalign.experiments.input_audit download --dataset text-vqa          # VLM runs only
+
+# MMLU and WikiText-2 need a configuration name, which the helper does not pass; download them directly:
+python -c "import os; from datasets import load_dataset; d = os.environ['REGIONALIGN_HF_HOME'] + '/datasets'; \
+load_dataset('cais/mmlu', 'all', cache_dir=d); load_dataset('wikitext', 'wikitext-2-raw-v1', cache_dir=d)"
+
+# The small VLMs are not in the helper's registry; download them with the Hub CLI:
+for repo in HuggingFaceTB/SmolVLM-Instruct Qwen/Qwen2-VL-2B-Instruct Qwen/Qwen2.5-VL-3B-Instruct; do
+  huggingface-cli download "$repo" --cache-dir "$REGIONALIGN_HF_HOME/hub"
+done
+
+python -m regionalign.experiments.input_audit audit                                # writes an input audit
+```
+
+`--revision` (both tools) pins a Hub commit. To reproduce this project exactly, use the
+checkpoint revisions and dataset files recorded in the `models` and `datasets` fields of its plans.
+
+OK-VQA has no training split on the Hub. Build the audited official train inputs once:
+
+```bash
+python -m regionalign.experiments.official_okvqa prepare-inputs --output regionalign/results/okvqa_official_inputs
+```
+
+## 4. Run a matched LLM experiment
+
+Each step writes under `regionalign/results/` (append-only; existing runs are never overwritten).
+
+```bash
+# 4a. Freeze a plan. Name each model with key=/path/to/checkpoint (a Hugging Face snapshot dir).
+python -m regionalign.experiments.llm plan \
+  --model qwen2.5-1.5b=$REGIONALIGN_HF_HOME/hub/models--Qwen--Qwen2.5-1.5B/snapshots/<rev> \
+  --wikitext-train      $REGIONALIGN_HF_HOME/datasets/wikitext/.../wikitext-train.arrow \
+  --wikitext-validation $REGIONALIGN_HF_HOME/datasets/wikitext/.../wikitext-validation.arrow \
+  --output regionalign/results/campaigns/my_run/plans/llm
+# -> prints the run directory; plan.json lists the conditions, e.g. qwen2.5-1.5b__int8__mmlu
+
+RUN=regionalign/results/campaigns/my_run/plans/llm
+COND=qwen2.5-1.5b__int8__mmlu
+
+# 4b. Search, then independent evaluation. Split the work into 36 shards (one per region × repeat;
+#     each shard holds all three layouts); run shards in parallel, e.g. as a Slurm array.
+for s in $(seq 0 35); do
+  python -m regionalign.experiments.llm search   --run $RUN --condition $COND --shard $s/36
+  python -m regionalign.experiments.llm evaluate --run $RUN --condition $COND --shard $s/36
+done
+
+# 4c. Progress
+python -m regionalign.experiments.llm status --run $RUN
+```
+
+**Expected output per condition:**
+- `artifacts/<condition>/`: 108 search artifacts (12 regions × 3 repeats × 3 layouts), each holding the flip set found for K = 1–16 and the permutation used.
+- `eval/<condition>/`: 108 evaluation reports.
+
+Each evaluation report contains:
+- `rearranged.gate`: whether the re-arranged layout passed the clean gate;
+- `results[K]`, for K = 1, 2, 4, 8, 16, with fields `valid`, `delta_nll`, `relative_score_drop` (or `ppl_ratio`) and `success`.
+
+A small 1–2 B model takes about 20–60 GPU-minutes per shard on an A100/H100.
+
+**VLMs** follow the same steps with `regionalign.experiments.vqa`, plus a mandatory real-GPU
+`preflight --run $RUN --condition $COND` before `search`/`evaluate`. The plan takes:
+- `--model smolvlm-instruct=/path`;
+- `--textvqa-train <arrow files>`;
+- `--okvqa-official regionalign/results/okvqa_official_inputs`.
+
+Use environment B for SmolVLM and Qwen2.5-VL.
+
+## 5. Optional: injection ASR on frozen layouts
+
+```bash
+python -m regionalign.experiments.llm_injection_trace prepare \
+  --source-run $RUN --law uniform \
+  --regions '[{"condition": "qwen2.5-1.5b__int8__mmlu", "region": "L08.v_proj.p7"}]' \
+  --output regionalign/results/campaigns/my_run/inject_uniform
+python -m regionalign.experiments.llm_injection_trace run \
+  --run regionalign/results/campaigns/my_run/inject_uniform --condition qwen2.5-1.5b__int8__mmlu
+```
+
+`--law highbias` weights each bit by 2^index (sign and high bits first). The default is 200 trials per layout at K = 1 and 16.
+
+**Expected:** in `inject/<condition>/`, one JSON per layout item of the region and per requested budget set. That is 7 files: 1 `noperm`, 3 `local` and 3 `random` repeats, each covering both K values. Pass `--item` and `--ks` to split the work finer.
+
+For each K, a file holds:
+- the ASR with a 95 % Wilson interval;
+- outcome counts;
+- the per-trial ΔNLL trace.
+
+## 6. Summaries
+
+`reporting/campaign_costs.py` builds per-arm and paired (local vs noperm, local vs random)
+summaries, damage-by-K tables and coverage from a finished campaign (`--base`, `--output`).
+Clean-baseline tables come from `reporting/mmlu.py` and `reporting/clean_matrix.py`.
+
+## Results of this project
+
+The experiment outputs are not in this repository: `results/` is append-only and not version-controlled.
+`RESULTS.md` indexes every campaign that was run. For each one it lists:
+- what it ran and its status;
+- where its check reports are;
+- which git commit reproduces its frozen sources byte for byte.
+
+To load an old plan, check out that commit as a worktree (see `RESULTS.md`).
+
+## Repository layout
+
+| path | purpose |
+|---|---|
+| `AGENTS.md`, `CLAUDE.md` | Operating contract for contributors and coding agents (hypothesis, what may change, self-check) |
+| `RESULTS.md` | Index of all experiment campaigns, their status and reproducing commits |
+| `config.py`, `runtime.json` | Paths, offline settings, append-only output rules; `hf_home` cache location |
+| `requirements.txt`, `requirements-tf451.txt` | The two pinned environments |
+| `harness/core.py` | Kernel: quantization, legal permutations, bit flips, in-range check, base runtime |
+| `harness/region.py` | Region geometry, the three layouts, region attack check, compute-budget context |
+| `harness/evidence.py` | JSON sanitising helpers |
+| `algorithm/search.py` | The shared region attack search |
+| `runtimes/text.py` | Frozen MMLU / WikiText token panels and objectives |
+| `runtimes/vqa.py`, `runtimes/vqa_score.py` | VLM panels, multimodal passes (full model or cached image features), official VQA scoring |
+| `experiments/llm.py` | LLM matched matrix: `plan`, `search`, `evaluate`, `status` |
+| `experiments/vqa.py` | VLM matched matrix: `plan`, `preflight` (required), `search`, `evaluate`, `status` |
+| `experiments/vqa_reeval.py` | Re-evaluate VQA reports whose summary crashed when the clean score is 0 (reuses search artifacts) |
+| `experiments/official_okvqa.py` | Official OK-VQA train inputs and their audit |
+| `experiments/llm_injection.py`, `llm_injection_biased.py`, `llm_injection_trace.py` | Random-fault injection ASR: uniform law, high-bit-biased law, per-trial trace (use the trace module) |
+| `experiments/input_audit.py` | Download and audit models and datasets |
+| `experiments/clean_mmlu.py`, `clean_wikitext.py`, `clean_benchmarks.py`, `clean_memory.py` | Fault-free baselines, model loading, input and source audit |
+| `experiments/campaign_protocol.py` | New plans that inherit panels byte for byte, with explicit resource policy and independent compute budget |
+| `experiments/campaign_variants.py` | Frozen ablation variants (`equal_exposure`, `distinct_weights`, budget variants), reference baselines |
+| `experiments/campaign_stage.py` | Stage coverage verification and completion markers |
+| `experiments/campaign_memory.py`, `bounded_checksum.py` | Chunked integer-checksum implementation with its own plan identity (`campaign_memory prepare` forks a frozen plan) |
+| `experiments/campaign_evaluation.py` | Final and cross-task evaluation after all dev artifacts are sealed (the only path that may open test panels) |
+| `experiments/nohup_campaign.py`, `campaign_watch.py`, `timeout_recovery.py` | Queue scheduling with dependencies, Slurm allocation, waiting for external evidence, bounded resumption after Slurm time limits |
+| `experiments/layout_validation.py` | Fault-free layout-equivalence and gradient-resource checks on real weights |
+| `experiments/task_transfer.py`, `checkpoint_transfer.py` | Cross-task and cross-checkpoint transfer evaluation |
+| `reporting/` | Tables and figures from finished campaigns |
+| `tests/helpers.py` | Tiny random models and runtime fixtures shared by the tests |
+| `tests/test_core.py`, `test_decoder_families.py` | Kernel: reversible flips, function- and code-preserving permutations (incl. LayerNorm and Gemma decoders), complete quantization, in-range rule |
+| `tests/test_region_core.py` | Regions, legal layouts, search interface, bit-identical reuse, package self-containment |
+| `tests/test_llm_region_study.py`, `test_vqa_region_study.py` | LLM / VLM matrices: matched repeats, isolation, source snapshots, input identity, evaluation rules |
+| `tests/test_vqa_reeval.py` | None-safe summary equals the original one; only summary crashes are selected |
+| `tests/test_matrix_vqa_runtime.py`, `test_vqa_cached_runtime.py` | Multimodal runtime, GQA and vision-channel sync; cached-feature runtime parity with the full model |
+| `tests/test_official_okvqa.py` | Official OK-VQA selection equivalence, source binding, no replacement of failed images |
+| `tests/test_llm_injection.py`, `test_llm_injection_biased.py`, `test_llm_injection_trace.py` | Fault sampling, success rule, plan hashing, biased law, per-trial trace consistency |
+| `tests/test_mmlu_clean.py`, `test_wikitext_clean_dev.py`, `test_clean_benchmarks.py`, `test_clean_memory.py` | Clean baselines: scoring, quantization, panel isolation, memory policy |
+| `tests/test_campaign_*.py`, `test_bounded_checksum.py`, `test_nohup_campaign.py`, `test_timeout_recovery.py`, `test_layout_validation.py` | Campaign tooling: inheritance, variants, stages, checksums, queueing, recovery, final-access gate, costs |
+| `tests/test_task_transfer.py`, `test_checkpoint_transfer.py` | Transfer evaluations on tiny real runtimes |
+| `tests/test_config.py` | Output boundaries, offline environment, refusal to overwrite, download scope |
+| `results/` | Outputs (append-only, not in git) |
+
+Module docstrings are the authoritative description of each implementation.
