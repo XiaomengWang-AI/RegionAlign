@@ -13,162 +13,164 @@
 </style>
 <title>RegionAlign</title>
 <style>
-  /* Layout concept: a dark "lab instrument" page — memory-strip diagram up top,
-     then a vertical read of problem → insight → method → results → caveat.
-     Dark-first; mirrored to light. One structural accent (signal blue),
-     semantic amber/red reserved for "fault / damage". */
+  /* Layout concept: one vertical narrative spine, 7 numbered beats, the results
+     section carrying the most visual weight. Dark-first, mirrored to light.
+     One structural accent (signal blue); amber = fragile weight, red = damage. */
   :root{
-    --bg:#0c0f16; --panel:#141924; --panel-2:#1b2231; --line:#263142;
-    --fg:#eef2f8; --muted:#9fb0c6; --faint:#6c7d95;
-    --accent:#5b8cff; --accent-soft:#1d2a47;
-    --warn:#ffb454; --danger:#ff6b6b; --danger-soft:#3a1f22;
-    --good:#4bd4a0;
-    --radius:14px; --maxw:1080px;
+    --bg:#0b0e15; --panel:#141a26; --panel-2:#1a2130; --line:#2a3545;
+    --fg:#eef2f8; --muted:#9db0c8; --faint:#67788f;
+    --accent:#5b8cff; --accent-soft:#1b2946;
+    --warn:#f0a53e; --danger:#ff6060; --danger-soft:#3a1d20;
+    --good:#45cf9c;
+    --radius:16px; --maxw:1060px;
     --sans:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
     --display:'Space Grotesk','Inter',system-ui,sans-serif;
     --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
     color-scheme:dark;
   }
   @media (prefers-color-scheme:light){ :root:not([data-theme="dark"]){
-    --bg:#f3f5f9; --panel:#ffffff; --panel-2:#eef2f8; --line:#d9e0ea;
-    --fg:#141a24; --muted:#4a5a70; --faint:#7a8aa0;
+    --bg:#f4f6fa; --panel:#ffffff; --panel-2:#eef2f8; --line:#dde4ee;
+    --fg:#111823; --muted:#47586f; --faint:#7a8aa0;
     --accent:#2f5fe0; --accent-soft:#e3eaff;
-    --warn:#b4701a; --danger:#d23b3b; --danger-soft:#fbe4e4;
-    --good:#1b9e73;
+    --warn:#b4701a; --danger:#d83a3a; --danger-soft:#fbe4e4;
+    --good:#139970;
     color-scheme:light;
   }}
   :root[data-theme="light"]{
-    --bg:#f3f5f9; --panel:#ffffff; --panel-2:#eef2f8; --line:#d9e0ea;
-    --fg:#141a24; --muted:#4a5a70; --faint:#7a8aa0;
+    --bg:#f4f6fa; --panel:#ffffff; --panel-2:#eef2f8; --line:#dde4ee;
+    --fg:#111823; --muted:#47586f; --faint:#7a8aa0;
     --accent:#2f5fe0; --accent-soft:#e3eaff;
-    --warn:#b4701a; --danger:#d23b3b; --danger-soft:#fbe4e4;
-    --good:#1b9e73;
+    --warn:#b4701a; --danger:#d83a3a; --danger-soft:#fbe4e4;
+    --good:#139970;
     color-scheme:light;
   }
 
   *{box-sizing:border-box}
-  body{background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.6;
+  body{background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.62;
     -webkit-font-smoothing:antialiased;overflow-x:hidden}
   .wrap{max-width:var(--maxw);margin-inline:auto;
     padding-left:max(20px,env(safe-area-inset-left,0px));
     padding-right:max(20px,env(safe-area-inset-right,0px))}
-  section{padding-block:clamp(2.6rem,6vw,4.6rem)}
-  h1,h2,h3{font-family:var(--display);text-wrap:balance;line-height:1.12;font-weight:600;margin:0}
+  section{padding-block:clamp(2.8rem,6vw,4.8rem);border-bottom:1px solid var(--line)}
+  h1,h2,h3{font-family:var(--display);text-wrap:balance;line-height:1.14;font-weight:600;margin:0;letter-spacing:-.01em}
   p{margin:0}
-  .eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.22em;text-transform:uppercase;
-    color:var(--accent);margin-bottom:.9rem}
-  .lede{color:var(--muted);font-size:clamp(1.02rem,1.6vw,1.2rem);max-width:60ch}
   a{color:var(--accent)}
 
-  /* ---- Hero ---- */
-  .hero{position:relative;
+  /* numbered section kicker */
+  .kick{display:flex;align-items:center;gap:.7rem;margin-bottom:1rem}
+  .kick .no{font-family:var(--mono);font-size:.74rem;color:var(--accent);
+    border:1px solid var(--accent-soft);background:var(--accent-soft);
+    border-radius:7px;padding:.18rem .5rem;letter-spacing:.05em}
+  .kick .t{font-family:var(--mono);font-size:.72rem;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--faint)}
+  .h2{font-size:clamp(1.6rem,3.8vw,2.4rem);max-width:22ch}
+  .lede{color:var(--muted);font-size:clamp(1.02rem,1.5vw,1.18rem);max-width:62ch;margin-top:1rem}
+
+  /* ---------- HERO ---------- */
+  .hero{position:relative;border-bottom:1px solid var(--line);
     margin-top:calc(-1 * env(safe-area-inset-top,0px));
-    padding-top:calc(env(safe-area-inset-top,0px) + clamp(2.6rem,6vw,4.4rem));
+    padding-top:calc(env(safe-area-inset-top,0px) + clamp(2.8rem,6vw,4.6rem));
+    padding-bottom:clamp(2.6rem,5vw,4rem);
     background:
-      radial-gradient(120% 90% at 85% -10%,var(--accent-soft),transparent 55%),
-      linear-gradient(180deg,var(--panel),var(--bg));
-    border-bottom:1px solid var(--line)}
-  .hero .tag{display:inline-flex;gap:.5rem;align-items:center;font-family:var(--mono);
-    font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);
-    border:1px solid var(--line);border-radius:999px;padding:.3rem .7rem;margin-bottom:1.4rem}
-  .hero .dot{width:7px;height:7px;border-radius:50%;background:var(--danger);
-    box-shadow:0 0 0 4px var(--danger-soft)}
-  .hero h1{font-size:clamp(2.5rem,7vw,4.6rem);letter-spacing:-.02em}
+      radial-gradient(130% 100% at 88% -20%,var(--accent-soft),transparent 52%),
+      linear-gradient(180deg,var(--panel),var(--bg))}
+  .tag{display:inline-flex;gap:.55rem;align-items:center;font-family:var(--mono);
+    font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);
+    border:1px solid var(--line);border-radius:999px;padding:.32rem .75rem;margin-bottom:1.5rem}
+  .tag .dot{width:7px;height:7px;border-radius:50%;background:var(--danger);box-shadow:0 0 0 4px var(--danger-soft)}
+  .hero h1{font-size:clamp(2.6rem,7.5vw,5rem)}
   .hero h1 .accent{color:var(--accent)}
-  .hero .sub{margin-top:1.3rem;font-size:clamp(1.1rem,2vw,1.4rem);color:var(--fg);max-width:40ch;font-weight:500}
-  .hero .plain{margin-top:1rem;color:var(--muted);max-width:56ch}
-  .ghlink{display:inline-flex;align-items:center;gap:.5rem;margin-top:1.5rem;
+  .hero .sub{margin-top:1.3rem;font-size:clamp(1.12rem,2vw,1.45rem);color:var(--fg);max-width:36ch;font-weight:500}
+  .hero .plain{margin-top:1rem;color:var(--muted);max-width:52ch}
+  .hero-grid{display:grid;grid-template-columns:1fr 1fr;gap:clamp(1.6rem,4vw,3.2rem);align-items:center}
+  @media(max-width:860px){.hero-grid{grid-template-columns:1fr}}
+
+  .ghlink{display:inline-flex;align-items:center;gap:.5rem;margin-top:1.6rem;
     font-family:var(--mono);font-size:.82rem;text-decoration:none;color:var(--fg);
     border:1px solid var(--line);background:var(--panel);border-radius:10px;
     padding:.55rem .85rem;transition:border-color .2s,color .2s}
   .ghlink:hover{border-color:var(--accent);color:var(--accent)}
   .ghlink svg{flex:0 0 auto}
-  .hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:clamp(1.6rem,4vw,3rem);align-items:center}
-  @media(max-width:820px){.hero-grid{grid-template-columns:1fr}}
-  .diagram{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
-    padding:1.1rem 1.1rem .8rem;box-shadow:0 20px 50px -30px rgba(0,0,0,.6)}
-  .diagram svg{width:100%;height:auto;display:block}
-  .diagram .cap{font-family:var(--mono);font-size:.72rem;color:var(--faint);
-    margin-top:.6rem;text-align:center}
 
-  /* ---- generic card grid ---- */
+  .figure{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:1.2rem 1.3rem 1rem;box-shadow:0 24px 60px -34px rgba(0,0,0,.55)}
+  .figure svg{width:100%;height:auto;display:block}
+  .legend{display:flex;flex-wrap:wrap;gap:.5rem 1.1rem;margin-top:.9rem;
+    font-family:var(--mono);font-size:.72rem;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:.4rem}
+  .lg{width:13px;height:13px;border-radius:3px;display:inline-block;flex:0 0 auto}
+  .lg.region{background:transparent;border:1.5px dashed var(--accent);border-radius:4px}
+  .figure .cap{font-family:var(--mono);font-size:.72rem;color:var(--faint);
+    margin-top:.7rem;padding-top:.7rem;border-top:1px solid var(--line);text-align:center}
+
+  /* ---------- generic ---------- */
   .grid{display:grid;gap:1.1rem}
   .cols-2{grid-template-columns:repeat(2,1fr)}
   .cols-3{grid-template-columns:repeat(3,1fr)}
   @media(max-width:720px){.cols-2,.cols-3{grid-template-columns:1fr}}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
-    padding:1.3rem 1.3rem 1.4rem}
-  .card h3{font-size:1.12rem;margin-bottom:.5rem}
-  .card p{color:var(--muted);font-size:.96rem}
-  .num{font-family:var(--display);font-size:.9rem;color:var(--accent);
-    font-variant-numeric:tabular-nums;font-weight:600}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:1.35rem 1.4rem}
+  .card h3{font-size:1.1rem;margin-bottom:.45rem}
+  .card p{color:var(--muted);font-size:.95rem}
 
-  /* ---- two-threat / insight split ---- */
-  .split{display:grid;grid-template-columns:1fr 1fr;gap:1.1rem;align-items:stretch}
-  @media(max-width:720px){.split{grid-template-columns:1fr}}
-  .threat{border-left:3px solid var(--line)}
-  .threat .k{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;
-    text-transform:uppercase;color:var(--faint);margin-bottom:.5rem}
-  .bridge{display:flex;align-items:center;justify-content:center;gap:.6rem;
-    color:var(--accent);font-family:var(--display);font-weight:600;margin:1.2rem 0 .2rem;text-align:center}
-  .bridge svg{flex:0 0 auto}
+  /* problem */
+  .threat .k{font-family:var(--mono);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:.5rem}
+  .bridge{display:flex;align-items:center;justify-content:center;gap:.6rem;color:var(--accent);
+    font-family:var(--display);font-weight:600;margin-top:1.3rem;text-align:center}
 
-  /* ---- method steps ---- */
-  .steps{counter-reset:s;display:grid;gap:.9rem}
+  /* idea */
+  .analogy{margin-top:1.3rem;border-left:3px solid var(--accent)}
+  .analogy h3{font-family:var(--display)}
+
+  /* steps */
+  .steps{counter-reset:s;display:grid;gap:.9rem;margin-top:1.6rem}
   .step{display:grid;grid-template-columns:auto 1fr;gap:1.1rem;align-items:start;
     background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:1.2rem 1.3rem}
   .step::before{counter-increment:s;content:counter(s,decimal-leading-zero);
-    font-family:var(--mono);font-size:.9rem;color:var(--accent);
-    border:1px solid var(--accent-soft);background:var(--accent-soft);
-    width:2.2rem;height:2.2rem;display:grid;place-items:center;border-radius:9px}
+    font-family:var(--mono);font-size:.9rem;color:var(--accent);background:var(--accent-soft);
+    width:2.3rem;height:2.3rem;display:grid;place-items:center;border-radius:9px}
   .step h3{font-size:1.06rem;margin-bottom:.25rem}
   .step p{color:var(--muted);font-size:.95rem}
 
-  /* ---- results ---- */
-  .result-head{display:flex;flex-wrap:wrap;gap:1rem 2rem;align-items:flex-end;justify-content:space-between;margin-bottom:1.6rem}
-  .legend{display:flex;gap:1.1rem;flex-wrap:wrap;font-size:.82rem;color:var(--muted);font-family:var(--mono)}
-  .legend span{display:inline-flex;align-items:center;gap:.4rem}
-  .swatch{width:12px;height:12px;border-radius:3px;display:inline-block}
-  .barcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:1.3rem 1.4rem 1.5rem}
-  .barcard h3{font-size:1.04rem}
-  .barcard .model{font-family:var(--mono);font-size:.74rem;color:var(--faint);letter-spacing:.08em;margin-bottom:.1rem}
-  .barcard .metric{color:var(--muted);font-size:.86rem;margin-bottom:1.1rem}
-  .bars{display:grid;gap:.7rem}
-  .bar{display:grid;grid-template-columns:5.6rem 1fr;align-items:center;gap:.7rem}
+  /* results — the heavy section */
+  .results{background:var(--panel-2)}
+  .res-legend{display:flex;gap:1.1rem;flex-wrap:wrap;font-size:.82rem;color:var(--muted);font-family:var(--mono);margin-top:1.1rem}
+  .res-legend span{display:inline-flex;align-items:center;gap:.45rem}
+  .swatch{width:13px;height:13px;border-radius:3px;display:inline-block}
+  .barcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:1.4rem 1.5rem 1.5rem}
+  .barcard .model{font-family:var(--mono);font-size:.73rem;color:var(--faint);letter-spacing:.06em;margin-bottom:.15rem}
+  .barcard h3{font-size:1.08rem}
+  .barcard .metric{color:var(--muted);font-size:.85rem;margin:.3rem 0 1.1rem}
+  .bars{display:grid;gap:.65rem}
+  .bar{display:grid;grid-template-columns:5.4rem 1fr;align-items:center;gap:.7rem}
   .bar .lab{font-size:.8rem;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
   .track{position:relative;height:26px;background:var(--panel-2);border-radius:7px;overflow:hidden}
-  .fill{position:absolute;inset:0 auto 0 0;border-radius:7px;display:flex;align-items:center;
-    justify-content:flex-end;padding-right:.5rem;font-family:var(--display);font-size:.78rem;
-    font-weight:600;color:#fff;font-variant-numeric:tabular-nums;min-width:2.4rem;
-    transition:width .9s cubic-bezier(.2,.7,.2,1)}
-  .fill.base{background:linear-gradient(90deg,#3a465c,#4a566e)}
+  .fill{position:absolute;inset:0 auto 0 0;border-radius:7px;display:flex;align-items:center;justify-content:flex-end;
+    padding-right:.5rem;font-family:var(--display);font-size:.78rem;font-weight:600;color:#fff;
+    font-variant-numeric:tabular-nums;min-width:2.6rem;width:6%;transition:width .9s cubic-bezier(.2,.7,.2,1)}
+  .fill.base{background:linear-gradient(90deg,#3a465c,#4b5872)}
   .fill.ra{background:linear-gradient(90deg,var(--danger),#ff9166)}
   .note{color:var(--faint);font-size:.8rem;margin-top:1rem;font-family:var(--mono)}
 
-  /* ---- stat row ---- */
-  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem}
+  /* scale stats */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-top:1.6rem}
   @media(max-width:720px){.stats{grid-template-columns:repeat(2,1fr)}}
-  .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:1.1rem 1.2rem}
-  .stat .v{font-family:var(--display);font-size:clamp(1.5rem,3.4vw,2.1rem);font-weight:600;
-    letter-spacing:-.01em;font-variant-numeric:tabular-nums}
-  .stat .l{color:var(--muted);font-size:.85rem;margin-top:.25rem}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:1.15rem 1.25rem}
+  .stat .v{font-family:var(--display);font-size:clamp(1.5rem,3.4vw,2.1rem);font-weight:600;font-variant-numeric:tabular-nums}
+  .stat .l{color:var(--muted);font-size:.84rem;margin-top:.3rem}
 
-  /* ---- caveat ---- */
-  .caveat{background:linear-gradient(180deg,var(--panel),var(--bg));
-    border:1px solid var(--line);border-radius:var(--radius);padding:clamp(1.4rem,3vw,2rem)}
-  .caveat .big{font-family:var(--display);font-size:clamp(1.3rem,3vw,1.7rem);font-weight:600;color:var(--warn)}
+  /* caveat */
+  .caveat{background:linear-gradient(180deg,var(--danger-soft),transparent);
+    border:1px solid var(--line);border-radius:var(--radius);padding:clamp(1.5rem,3vw,2.1rem);margin-top:1.4rem}
+  .caveat .big{font-family:var(--display);font-size:clamp(1.3rem,3vw,1.75rem);font-weight:600;color:var(--warn)}
+  .caveat p{color:var(--muted);margin-top:1rem;max-width:68ch}
 
-  footer{border-top:1px solid var(--line);color:var(--faint);font-size:.85rem}
-  footer .wrap{padding-block:2.2rem}
-  .pill{font-family:var(--mono);font-size:.72rem;color:var(--muted);border:1px solid var(--line);
-    border-radius:999px;padding:.25rem .6rem;display:inline-block}
+  footer{color:var(--faint);font-size:.88rem}
+  footer .wrap{padding-block:2.4rem}
+  .pill{font-family:var(--mono);font-size:.72rem;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:.25rem .65rem;display:inline-block}
 
-  /* theme toggle */
-  .toggle{position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);
-    right:calc(env(safe-area-inset-right,0px) + 14px);z-index:20;
-    background:var(--panel);border:1px solid var(--line);color:var(--muted);
-    width:38px;height:38px;border-radius:10px;cursor:pointer;font-size:1rem;
-    display:grid;place-items:center}
+  .toggle{position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);right:calc(env(safe-area-inset-right,0px) + 14px);
+    z-index:20;background:var(--panel);border:1px solid var(--line);color:var(--muted);
+    width:38px;height:38px;border-radius:10px;cursor:pointer;font-size:1rem;display:grid;place-items:center}
   @media(prefers-reduced-motion:reduce){.fill{transition:none}}
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -182,129 +184,109 @@
 <!-- ============ HERO ============ -->
 <header class="hero">
   <div class="wrap">
-    <span class="tag"><span class="dot"></span> AI security · supply chain × hardware fault injection</span>
+    <span class="tag"><span class="dot"></span> AI security · supply chain × hardware fault</span>
     <div class="hero-grid">
       <div>
         <h1><span class="accent">Region</span>Align</h1>
-        <p class="sub">Rearranging where an AI model's weights are stored — without changing a single value — to make one physical glitch far more damaging.</p>
-        <p class="plain">A malicious model provider never touches the numbers inside the model, so it behaves identically and passes every quality check. All they change is the <strong>layout</strong>: which weights sit in which patch of memory. That quiet rearrangement herds the model's most fragile weights into one small region — so a single localized hardware fault there breaks the model, where the same fault on the original layout barely registers.</p>
+        <p class="sub">Rearranging <em>where</em> an AI model's weights are stored — without changing a single value — to make one physical glitch far more damaging.</p>
+        <p class="plain">A malicious model provider never touches the numbers inside the model, so it behaves identically and passes every quality check. The only thing they change is the <strong>layout</strong>: which weights sit in which patch of memory. That quiet rearrangement herds the model's most fragile weights into one small region, so a single localized hardware fault there breaks the model — where the same fault on the original layout barely registers.</p>
         <a class="ghlink" href="https://github.com/XiaomengWang-AI/RegionAlign" target="_blank" rel="noopener">
           <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
           Code &amp; paper on GitHub
         </a>
       </div>
-      <div class="diagram">
-        <svg viewBox="0 0 440 300" role="img" aria-label="Two memory strips. In the original layout the fragile weights are scattered, so a localized fault hits few of them. In the RegionAlign layout the fragile weights are concentrated in the target region, so the same fault hits many.">
-          <defs>
-            <linearGradient id="zap" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="var(--warn)"/><stop offset="1" stop-color="var(--danger)"/>
-            </linearGradient>
-          </defs>
-          <!-- labels -->
-          <text x="0" y="16" fill="var(--faint)" font-family="var(--mono)" font-size="11">ORIGINAL LAYOUT</text>
-          <text x="440" y="16" text-anchor="end" fill="var(--faint)" font-family="var(--mono)" font-size="11">REGIONALIGN LAYOUT</text>
-          <!-- strips: 2 rows of cells each -->
-          <g id="stripA"></g>
-          <g id="stripB"></g>
-          <!-- outcome labels -->
-          <text x="110" y="290" text-anchor="middle" fill="var(--muted)" font-family="var(--sans)" font-size="12">small drop</text>
-          <text x="330" y="290" text-anchor="middle" fill="var(--danger)" font-family="var(--sans)" font-size="12" font-weight="600">large drop</text>
-        </svg>
-        <p class="cap">same weights · same clean behavior · same single fault</p>
-      </div>
+      <figure class="figure">
+        <svg id="scene" viewBox="0 0 480 268" role="img" aria-label="Two memory strips. The attacker can only hit one fixed region (dashed box). In the original layout the fragile weights are scattered, so the fault in that region hits only one of them and the model barely changes. In the RegionAlign layout the fragile weights are packed into that same region, so the same fault hits all of them and the model breaks."></svg>
+        <div class="legend">
+          <span><i class="lg" style="background:var(--warn)"></i> fragile weight</span>
+          <span><i class="lg" style="background:var(--panel-2);border:1px solid var(--line)"></i> normal weight</span>
+          <span><i class="lg region"></i> region a fault can reach</span>
+        </div>
+        <p class="cap">same weights · same clean behavior · same single fault — only the arrangement differs</p>
+      </figure>
     </div>
   </div>
 </header>
 
-<!-- ============ PROBLEM ============ -->
+<!-- ============ 01 PROBLEM ============ -->
 <section>
   <div class="wrap">
-    <p class="eyebrow">The setup</p>
-    <h2 style="font-size:clamp(1.6rem,3.6vw,2.3rem);max-width:20ch">Two known threats that nobody had connected</h2>
-    <p class="lede" style="margin-top:1rem">AI models are often built and shipped by someone else. Separately, hardware attacks can flip individual bits in memory. On their own, each is manageable. RegionAlign shows what happens when one sets up the other.</p>
-    <div class="split" style="margin-top:1.8rem">
+    <div class="kick"><span class="no">01</span><span class="t">The problem</span></div>
+    <h2 class="h2">Two known threats that nobody had connected</h2>
+    <p class="lede">AI models are often built and shipped by someone else. Separately, hardware attacks can flip individual bits in memory. On their own, each is manageable — RegionAlign shows what happens when one is used to set up the other.</p>
+    <div class="grid cols-2" style="margin-top:1.8rem">
       <div class="card threat">
         <div class="k">Threat A · supply chain</div>
         <h3>A tampered model</h3>
-        <p>You download a model from a third party. If it still answers correctly, it looks trustworthy — but a provider can hide changes that only show up later.</p>
+        <p>You download a model from a third party. If it still answers correctly it looks trustworthy — but the provider can hide changes that only surface later.</p>
       </div>
       <div class="card threat">
         <div class="k">Threat B · hardware</div>
         <h3>A physical glitch</h3>
-        <p>With physical access, an attacker can zap a chip (e.g. with an electromagnetic pulse) and flip bits of the stored weights in one small area of memory.</p>
+        <p>With physical access, an attacker can zap a chip (for example with an electromagnetic pulse) and flip bits of the stored weights in one small area of memory.</p>
       </div>
     </div>
-    <div class="bridge">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+    <p class="bridge">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
       RegionAlign makes Threat A quietly load the gun for Threat B.
-    </div>
+    </p>
   </div>
 </section>
 
-<!-- ============ INSIGHT ============ -->
-<section style="background:var(--panel-2);border-block:1px solid var(--line)">
+<!-- ============ 02 IDEA ============ -->
+<section style="background:var(--panel-2)">
   <div class="wrap">
-    <p class="eyebrow">The key idea</p>
-    <h2 style="font-size:clamp(1.6rem,3.6vw,2.3rem);max-width:24ch">It's about <em>where</em> things are stored, not <em>what</em> they are</h2>
+    <div class="kick"><span class="no">02</span><span class="t">The key idea</span></div>
+    <h2 class="h2">It's about <em>where</em> weights are stored, not <em>what</em> they are</h2>
     <div class="grid cols-2" style="margin-top:1.6rem">
-      <p class="lede">A model has millions of weights. A few of them are fragile: flip a bit and the model's quality collapses. Normally those fragile weights are scattered all over memory, so one localized glitch only touches a handful.</p>
-      <p class="lede">RegionAlign reorders the weights — a shuffle that leaves the math <strong>exactly</strong> the same — so the fragile ones end up packed into one pre-chosen region. Nothing about the model's behavior changes. The trap is purely in the arrangement.</p>
+      <p class="lede" style="margin-top:0">A model has millions of weights. A few are fragile: flip one bit and quality collapses. Normally those fragile weights are scattered all over memory, so one localized glitch touches only a handful.</p>
+      <p class="lede" style="margin-top:0">RegionAlign reorders the weights — a shuffle that leaves the math <strong>exactly</strong> the same — so the fragile ones end up packed into one pre-chosen region. The model's behavior never changes. The trap is purely in the arrangement.</p>
     </div>
-    <div class="card" style="margin-top:1.4rem;border-left:3px solid var(--accent)">
-      <h3 style="font-family:var(--display)">Think of a moving crate</h3>
-      <p style="color:var(--muted)">Imagine packing a crate. The same items go in — nothing added, nothing removed, so it weighs the same and passes inspection. But you quietly move every breakable item into one corner. Now a single knock to that corner shatters far more than a knock would have before. RegionAlign does this with a model's fragile weights.</p>
+    <div class="card analogy">
+      <h3>Think of a moving crate</h3>
+      <p style="color:var(--muted)">The same items go in — nothing added, nothing removed — so the crate weighs the same and passes inspection. But you quietly move every breakable item into one corner. Now a single knock to that corner shatters far more than it would have before. RegionAlign does this with a model's fragile weights.</p>
     </div>
   </div>
 </section>
 
-<!-- ============ METHOD ============ -->
+<!-- ============ 03 METHOD ============ -->
 <section>
   <div class="wrap">
-    <p class="eyebrow">How it's done</p>
-    <h2 style="font-size:clamp(1.6rem,3.6vw,2.3rem);max-width:24ch">Three steps, no retraining, no changed values</h2>
-    <div class="steps" style="margin-top:1.6rem">
-      <div class="step">
-        <div>
-          <h3>Find the fragile weights</h3>
-          <p>A guided search measures which weights, if corrupted, hurt the model most — and how to flip their bits for the biggest effect within a fixed budget.</p>
-        </div>
-      </div>
-      <div class="step">
-        <div>
-          <h3>Herd them into the target region</h3>
-          <p>Equivalent "channel permutations" (borrowed from model-compression tricks) reorder weights so the fragile ones land inside one aligned 4&nbsp;KB region, while the model stays mathematically identical.</p>
-        </div>
-      </div>
-      <div class="step">
-        <div>
-          <h3>Pass every clean check</h3>
-          <p>Each prepared layout must match the original's accuracy and perplexity before it counts. The tampering is invisible to anyone evaluating task performance.</p>
-        </div>
-      </div>
+    <div class="kick"><span class="no">03</span><span class="t">How it's done</span></div>
+    <h2 class="h2">Three steps — no retraining, no changed values</h2>
+    <div class="steps">
+      <div class="step"><div>
+        <h3>Find the fragile weights</h3>
+        <p>A guided search measures which weights, if corrupted, hurt the model most — and how to flip their bits for the biggest effect within a fixed budget.</p>
+      </div></div>
+      <div class="step"><div>
+        <h3>Herd them into the target region</h3>
+        <p>Equivalent reorderings (channel permutations, borrowed from model-compression tricks) move the fragile weights into one aligned 4&nbsp;KB region, while the model stays mathematically identical.</p>
+      </div></div>
+      <div class="step"><div>
+        <h3>Pass every clean check</h3>
+        <p>Each prepared layout must match the original's accuracy and perplexity before it counts. The tampering is invisible to anyone evaluating task performance.</p>
+      </div></div>
     </div>
   </div>
 </section>
 
-<!-- ============ RESULTS ============ -->
-<section style="background:var(--panel-2);border-block:1px solid var(--line)">
+<!-- ============ 04 RESULTS ============ -->
+<section class="results">
   <div class="wrap">
-    <div class="result-head">
-      <div>
-        <p class="eyebrow">What we found</p>
-        <h2 style="font-size:clamp(1.6rem,3.6vw,2.3rem);max-width:22ch">Identical when clean. Not identical when hit.</h2>
-      </div>
-      <div class="legend">
-        <span><i class="swatch" style="background:#4a566e"></i> Original / Random layout</span>
-        <span><i class="swatch" style="background:var(--danger)"></i> RegionAlign layout</span>
-      </div>
+    <div class="kick"><span class="no">04</span><span class="t">What we found</span></div>
+    <h2 class="h2">Identical when clean. Not identical when hit.</h2>
+    <p class="lede">We compare three layouts head-to-head under a <strong>matched</strong> region, fault budget, and search budget: the original, the attacker's RegionAlign layout, and a random reshuffle outside the attacker's control. Before any fault, all three perform the same. After the same in-region bit flips, RegionAlign degrades far more. Taller bar = worse for the model.</p>
+    <div class="res-legend">
+      <span><i class="swatch" style="background:#4b5872"></i> Original / Random layout</span>
+      <span><i class="swatch" style="background:var(--danger)"></i> RegionAlign layout</span>
     </div>
-    <p class="lede" style="margin-bottom:1.6rem">We compare three layouts head-to-head under a <strong>matched</strong> region, fault budget, and search budget: the original, the attacker's RegionAlign layout, and a random reshuffle outside the attacker's control. Before any fault, all three perform the same. After the same in-region bit flips, RegionAlign degrades far more. Higher bar = worse for the model.</p>
 
-    <div class="grid cols-2">
-      <div class="barcard" id="c1">
+    <div class="grid cols-2" style="margin-top:1.6rem">
+      <div class="barcard">
         <div class="model">StableLM2-1.6B · WikiText-2</div>
-        <h3>A single flip, 6× worse text</h3>
-        <p class="metric">Perplexity after 1 bit flip (lower is better for the model)</p>
+        <h3>One flip, 6× worse text</h3>
+        <p class="metric">Perplexity after a single bit flip — lower is better for the model</p>
         <div class="bars">
           <div class="bar"><span class="lab">Clean</span><div class="track"><div class="fill base" data-w="11.5" data-max="70" data-val="11.5"></div></div></div>
           <div class="bar"><span class="lab">Baselines</span><div class="track"><div class="fill base" data-w="11.5" data-max="70" data-val="11.5"></div></div></div>
@@ -313,10 +295,10 @@
         <p class="note">11.5 → 68.3 perplexity · baselines stay ~11.5</p>
       </div>
 
-      <div class="barcard" id="c2">
+      <div class="barcard">
         <div class="model">Qwen2.5-1.5B · MMLU</div>
         <h3>Accuracy cut roughly in half</h3>
-        <p class="metric">Exam-style accuracy after 4 bit flips (higher is better for the model)</p>
+        <p class="metric">Exam-style accuracy after four bit flips — higher is better for the model</p>
         <div class="bars">
           <div class="bar"><span class="lab">Clean</span><div class="track"><div class="fill base" data-w="59.3" data-max="60" data-val="59.3%"></div></div></div>
           <div class="bar"><span class="lab">Baselines</span><div class="track"><div class="fill base" data-w="59" data-max="60" data-val="~59%"></div></div></div>
@@ -328,46 +310,46 @@
 
     <div class="card" style="margin-top:1.1rem;border-left:3px solid var(--danger)">
       <h3 style="font-family:var(--display)">Vision models fall off a cliff</h3>
-      <p style="color:var(--muted)">For Qwen2.5-VL-3B, a <strong>single</strong> in-region bit flip under RegionAlign drops its score on both image-question tasks below 1 (out of ~60 and ~88 clean) — while the original and random layouts stay near their clean scores under the exact same fault.</p>
+      <p style="color:var(--muted)">For Qwen2.5-VL-3B, a <strong>single</strong> in-region bit flip under RegionAlign drops its score on both image-question tasks below 1 (out of ~60 and ~88 when clean) — while the original and random layouts stay near their clean scores under the exact same fault.</p>
     </div>
-    <p class="note">Why it works: almost all selected flips hit the most-significant bit of a near-zero weight. RegionAlign moves weights whose rows allow large values into the region, so one flip swings them hard — a leverage the other layouts simply don't have in that region.</p>
+    <p class="note">Why it works: almost all selected flips hit the most-significant bit of a near-zero weight. RegionAlign moves weights whose rows allow large values into the region, so one flip swings them hard — leverage the other layouts simply don't have there.</p>
   </div>
 </section>
 
-<!-- ============ SCALE ============ -->
+<!-- ============ 05 SCALE ============ -->
 <section>
   <div class="wrap">
-    <p class="eyebrow">How thoroughly</p>
-    <h2 style="font-size:clamp(1.5rem,3.4vw,2.1rem);max-width:24ch">A fully matched, repeated comparison</h2>
-    <div class="stats" style="margin-top:1.5rem">
+    <div class="kick"><span class="no">05</span><span class="t">How thorough</span></div>
+    <h2 class="h2">A fully matched, repeated comparison</h2>
+    <div class="stats">
       <div class="stat"><div class="v">9</div><div class="l">models — 6 language, 3 vision-language</div></div>
       <div class="stat"><div class="v">3</div><div class="l">layouts compared under identical budgets</div></div>
       <div class="stat"><div class="v">12×3</div><div class="l">memory regions × repeated search runs</div></div>
       <div class="stat"><div class="v">1–16</div><div class="l">bit flips per fault budget</div></div>
     </div>
-    <p class="lede" style="margin-top:1.4rem">Every comparison fixes the same model, task, quantization, region, fault budget, and search effort, so any difference in damage comes from the layout alone — not from luck or from spending more on the attack.</p>
+    <p class="lede">Every comparison fixes the same model, task, quantization, region, fault budget, and search effort — so any difference in damage comes from the layout alone, not from luck or from spending more on the attack.</p>
   </div>
 </section>
 
-<!-- ============ CAVEAT ============ -->
-<section style="background:var(--panel-2);border-block:1px solid var(--line)">
+<!-- ============ 06 CAVEAT ============ -->
+<section style="background:var(--panel-2)">
   <div class="wrap">
-    <p class="eyebrow">The honest limit</p>
+    <div class="kick"><span class="no">06</span><span class="t">The honest limit</span></div>
     <div class="caveat">
       <p class="big">Hitting one region physically is hard — and that's exactly the point.</p>
-      <p style="color:var(--muted);margin-top:1rem;max-width:68ch">We confirmed on real hardware (an NVIDIA Jetson AGX Thor) that electromagnetic pulses genuinely corrupt stored weights, in both directions, as our model assumes. But across <strong>2,500</strong> attempts, none precisely landed on the pre-chosen target. So RegionAlign's power isn't a claim that physical aiming is easy. It's that <em>once</em> the attacker is constrained to a region, the layout they chose decides how much damage a fault there can do.</p>
+      <p>We confirmed on real hardware (an NVIDIA Jetson AGX Thor) that electromagnetic pulses genuinely corrupt stored weights, in both directions, as our model assumes. But across <strong>2,500</strong> attempts, none precisely landed on the pre-chosen target. So RegionAlign's power is not a claim that physical aiming is easy. It is that <em>once</em> the attacker is confined to a region, the layout they chose decides how much damage a fault there can do.</p>
     </div>
   </div>
 </section>
 
-<!-- ============ WHY IT MATTERS ============ -->
+<!-- ============ 07 WHY IT MATTERS ============ -->
 <section>
   <div class="wrap">
-    <p class="eyebrow">Why it matters</p>
-    <h2 style="font-size:clamp(1.6rem,3.6vw,2.3rem);max-width:26ch">A clean-looking model can still be a trap</h2>
+    <div class="kick"><span class="no">07</span><span class="t">Why it matters</span></div>
+    <h2 class="h2">A clean-looking model can still be a trap</h2>
     <div class="grid cols-3" style="margin-top:1.6rem">
       <div class="card"><h3>Checking quality isn't enough</h3><p>A tampered model matches the original on every accuracy test. Resilience to physical faults has to be checked separately — behavior alone won't reveal it.</p></div>
-      <div class="card"><h3>Two fields have to talk</h3><p>Model supply-chain security and hardware fault-injection security were studied apart. This work shows how a layout choice links them.</p></div>
+      <div class="card"><h3>Two fields have to talk</h3><p>Model supply-chain security and hardware fault-injection security were studied apart. This work shows how a single layout choice links them.</p></div>
       <div class="card"><h3>Layout deserves attention</h3><p>Where weights are stored is usually treated as a harmless detail. RegionAlign shows it can be a deliberate attack surface.</p></div>
     </div>
   </div>
@@ -375,23 +357,21 @@
 
 <footer>
   <div class="wrap">
-    <div style="display:flex;flex-wrap:wrap;gap:1rem;justify-content:space-between;align-items:center">
+    <div style="display:flex;flex-wrap:wrap;gap:1.2rem;justify-content:space-between;align-items:center">
       <div>
         <strong style="font-family:var(--display);color:var(--fg)">RegionAlign</strong>
-        <p style="margin-top:.3rem;max-width:60ch">Manipulating parameter layouts for localized fault injection on LLMs and VLMs. Study on INT8-quantized models with a matched Original / RegionAlign / Random comparison and an EMFI hardware feasibility check.</p>
+        <p style="margin-top:.35rem;max-width:60ch">Manipulating parameter layouts for localized fault injection on LLMs and VLMs. A matched Original / RegionAlign / Random comparison on INT8-quantized models, with an EMFI hardware feasibility check.</p>
       </div>
-      <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center">
-        <a class="ghlink" href="https://github.com/XiaomengWang-AI/RegionAlign" target="_blank" rel="noopener">
-          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-          github.com/XiaomengWang-AI/RegionAlign
-        </a>
-      </div>
+      <a class="ghlink" style="margin-top:0" href="https://github.com/XiaomengWang-AI/RegionAlign" target="_blank" rel="noopener">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        github.com/XiaomengWang-AI/RegionAlign
+      </a>
     </div>
   </div>
 </footer>
 
 <script>
-  // theme toggle (per-viewer convenience only)
+  // theme toggle (per-viewer convenience)
   (function(){
     var root=document.documentElement,btn=document.getElementById('themeBtn');
     try{var s=localStorage.getItem('ra-theme');if(s)root.setAttribute('data-theme',s);}catch(e){}
@@ -404,67 +384,63 @@
     });
   })();
 
-  // build the two memory strips in the hero diagram
+  // hero scene: two stacked memory strips, same region & same fault, different arrangement
   (function(){
-    var cols=11,rows=2,cw=16,ch=16,gap=4,x0a=0,x0b=220,y0=34;
-    function cell(x,y,fill,stroke){
-      return '<rect x="'+x+'" y="'+y+'" width="'+cw+'" height="'+ch+'" rx="2.5" fill="'+fill+'" stroke="'+(stroke||'none')+'" stroke-width="1"/>';
+    var NS='http://www.w3.org/2000/svg',svg=document.getElementById('scene');
+    var COLS=12,SZ=21,GAP=6,PITCH=SZ+GAP,X0=16;
+    var REGION=[4,5,6,7];                        // the fixed region a fault can reach (same in both)
+    var regX=X0+REGION[0]*PITCH-4, regW=REGION.length*PITCH-GAP+8;
+    function el(n,a){var e=document.createElementNS(NS,n);for(var k in a)e.setAttribute(k,a[k]);return e;}
+    function text(x,y,s,a){var t=el('text',Object.assign({x:x,y:y},a));t.textContent=s;return t;}
+    function bolt(cx,ty){ // small lightning striking downward into the region
+      return el('path',{d:'M'+(cx-5)+' '+ty+' L'+(cx+6)+' '+ty+' L'+(cx)+' '+(ty+13)+' L'+(cx+8)+' '+(ty+13)+
+        ' L'+(cx-7)+' '+(ty+34)+' L'+(cx-1)+' '+(ty+18)+' L'+(cx-9)+' '+(ty+18)+' Z',
+        fill:'url(#boltg)',stroke:'var(--bg)','stroke-width':'.6'});
     }
-    // which indices (0..21) are "vulnerable"
-    var scattered=[2,5,9,13,16,20];           // original: spread out
-    var packed=[11,12,13,14,15,16];           // regionalign: inside target region (row 2, left)
-    function strip(x0,vuln,regionIdx){
-      var s='',i=0;
-      for(var r=0;r<rows;r++)for(var c=0;c<cols;c++){
-        var x=x0+c*(cw+gap),y=y0+r*(ch+gap);
-        var inRegion=regionIdx.indexOf(i)>-1;
-        var isVuln=vuln.indexOf(i)>-1;
-        var fill=isVuln?'var(--warn)':'var(--panel-2)';
-        s+=cell(x,y,fill, inRegion?'transparent':'var(--line)');
-        i++;
+    function panel(cfg){
+      var g=el('g',{});
+      g.appendChild(text(X0,cfg.y-30,cfg.title,{fill:'var(--faint)','font-family':'var(--mono)','font-size':'11','letter-spacing':'.5'}));
+      // region highlight behind cells
+      g.appendChild(el('rect',{x:regX,y:cfg.y-5,width:regW,height:SZ+10,rx:6,
+        fill:cfg.tone==='big'?'var(--danger-soft)':'var(--accent-soft)',opacity:.6}));
+      for(var c=0;c<COLS;c++){
+        var vuln=cfg.frag.indexOf(c)>-1;
+        g.appendChild(el('rect',{x:X0+c*PITCH,y:cfg.y,width:SZ,height:SZ,rx:4,
+          fill:vuln?'var(--warn)':'var(--panel-2)',stroke:vuln?'var(--warn)':'var(--line)','stroke-width':1}));
       }
-      return s;
+      // dashed region outline
+      g.appendChild(el('rect',{x:regX,y:cfg.y-5,width:regW,height:SZ+10,rx:6,fill:'none',
+        stroke:'var(--accent)','stroke-width':2,'stroke-dasharray':'5 4'}));
+      // fault bolt above region
+      var cx=regX+regW/2;
+      g.appendChild(bolt(cx,cfg.y-32));
+      // outcome at right
+      var ox=X0+COLS*PITCH+14;
+      g.appendChild(text(ox,cfg.y-1,cfg.hits,{fill:cfg.tone==='big'?'var(--danger)':'var(--muted)',
+        'font-family':'var(--display)','font-size':'12','font-weight':'600'}));
+      g.appendChild(text(ox,cfg.y+15,cfg.drop,{fill:cfg.tone==='big'?'var(--danger)':'var(--muted)',
+        'font-family':'var(--sans)','font-size':'12','font-weight':cfg.tone==='big'?'600':'400'}));
+      return g;
     }
-    // target region outline = the 6 cells of the second strip's region / first strip same physical spot
-    var regionCells=[11,12,13,14,15,16];
-    function regionBox(x0){
-      // cells 11..16 are row2 col0..5
-      var c0=0, r=1;
-      var x=x0+c0*(cw+gap)-3, y=y0+r*(ch+gap)-3;
-      var w=6*(cw+gap)-gap+6, h=ch+6;
-      return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="5" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4 3"/>';
-    }
-    function zap(cx){
-      var topY=y0+2*(ch+gap)+6, tipY=topY+34;
-      return '<g>'+
-        '<path d="M'+cx+' '+(topY-30)+' L'+(cx-9)+' '+(topY+2)+' L'+(cx-1)+' '+(topY+2)+' L'+(cx-7)+' '+(tipY)+' L'+(cx+11)+' '+(topY-6)+' L'+(cx+2)+' '+(topY-6)+' Z" fill="url(#zap)"/>'+
-        '</g>';
-    }
-    var A=document.getElementById('stripA'),B=document.getElementById('stripB');
-    // region center x for strip A and B
-    var regCenterA=x0a+(3)*(cw+gap)-gap/2-6;
-    var regCenterB=x0b+(3)*(cw+gap)-gap/2-6;
-    A.innerHTML=strip(x0a,scattered,regionCells)+regionBox(x0a)+zap(regCenterA);
-    B.innerHTML=strip(x0b,packed,regionCells)+regionBox(x0b)+zap(regCenterB);
+    var defs=el('defs',{});
+    var lg=el('linearGradient',{id:'boltg',x1:0,y1:0,x2:0,y2:1});
+    lg.appendChild(el('stop',{offset:0,'stop-color':'var(--warn)'}));
+    lg.appendChild(el('stop',{offset:1,'stop-color':'var(--danger)'}));
+    defs.appendChild(lg); svg.appendChild(defs);
+    svg.appendChild(panel({y:70, title:'ORIGINAL LAYOUT',  frag:[1,5,8,10], tone:'small',
+      hits:'hits 1 of 4', drop:'small drop'}));
+    svg.appendChild(panel({y:198,title:'REGIONALIGN LAYOUT',frag:[4,5,6,7],  tone:'big',
+      hits:'hits 4 of 4', drop:'large drop'}));
   })();
 
-  // animate result bars when scrolled into view
+  // animate result bars into view
   (function(){
     var fills=[].slice.call(document.querySelectorAll('.fill'));
-    function set(f){
-      var w=parseFloat(f.getAttribute('data-w')),max=parseFloat(f.getAttribute('data-max'));
-      var pct=Math.max(6,Math.min(100,w/max*100));
-      f.style.width=pct+'%';
-      f.textContent=f.getAttribute('data-val');
-    }
+    function set(f){var w=parseFloat(f.getAttribute('data-w')),m=parseFloat(f.getAttribute('data-max'));
+      f.style.width=Math.max(6,Math.min(100,w/m*100))+'%';f.textContent=f.getAttribute('data-val');}
     if(!('IntersectionObserver' in window)){fills.forEach(set);return;}
-    fills.forEach(function(f){f.style.width='6%';});
-    var io=new IntersectionObserver(function(es){
-      es.forEach(function(e){if(e.isIntersecting){
-        [].slice.call(e.target.querySelectorAll('.fill')).forEach(set);
-        io.unobserve(e.target);
-      }});
-    },{threshold:.3});
+    var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){
+      [].slice.call(e.target.querySelectorAll('.fill')).forEach(set);io.unobserve(e.target);}});},{threshold:.3});
     document.querySelectorAll('.barcard').forEach(function(c){io.observe(c);});
   })();
 </script>
